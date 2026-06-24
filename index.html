@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>생산 관리 캘린더</title>
+<style>
+  :root {
+    --color-bg: #ffffff;
+    --color-bg-secondary: #f4f6f9;
+    --color-bg-tertiary: #eceff4;
+    --color-border: #dce1ea;
+    --color-text: #1a1a18;
+    --color-text-secondary: #6b6a64;
+    --color-text-tertiary: #9b9a93;
+    --sat-color: #2f6fbf;
+    --sun-color: #d14343;
+    --radius-md: 8px;
+    --radius-lg: 12px;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: var(--color-bg-secondary);
+    color: var(--color-text);
+    padding: 48px 32px;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+  }
+  .layout {
+    max-width: 1480px;
+    width: 100%;
+    margin: 0 auto;
+    display: flex;
+    align-items: flex-start;
+    gap: 22px;
+  }
+  .main-col { flex: 1; min-width: 0; }
+  .side-col {
+    width: 360px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 48px;
+    margin-top: 14px;
+  }
+  .topbar { margin-top: 14px; margin-bottom: 16px; }
+  .topbar-title-row {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; flex-wrap: wrap; gap: 12px;
+  }
+  .topbar-left h1 { font-size: 26px; font-weight: 700; margin: 0; letter-spacing: -0.5px; }
+  .topbar-right { display: flex; gap: 8px; align-items: flex-end; }
+  .legend { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; margin-right: 8px; }
+  .legend-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--color-text-secondary); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+  button {
+    font-family: inherit;
+    border: 1px solid var(--color-border);
+    background: var(--color-bg);
+    border-radius: var(--radius-md);
+    padding: 8px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--color-text);
+  }
+  button:hover { background: var(--color-bg-tertiary); }
+  button.primary { background: var(--color-text); color: #fff; border-color: var(--color-text); }
+  button.primary:hover { opacity: 0.85; }
+  .calendar-card {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .weekday-row {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0,1fr));
+    background: var(--color-bg);
+    border-bottom: 2px solid var(--color-border);
+  }
+  .weekday-row div { text-align: center; padding: 12px 0; font-size: 15px; font-weight: 700; color: var(--color-text-secondary); }
+  .weekday-row div.sun { color: var(--sun-color); }
+  .weekday-row div.sat { color: var(--sat-color); }
+  .grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); }
+  .cell {
+    min-height: 136px;
+    border-right: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    padding: 10px;
+    cursor: pointer;
+    position: relative;
+  }
+  .cell.outside { background: var(--color-bg-secondary); cursor: default; }
+  .cell.today { background: var(--color-bg); box-shadow: inset 0 0 0 2px #1a1a18; }
+  .cell.selected { box-shadow: inset 0 0 0 2px #6ab04c; }
+  .daynum { font-size: 15px; margin-bottom: 6px; }
+  .daynum.today { color: var(--color-text); font-weight: 600; }
+  .daynum.sun { color: var(--sun-color); }
+  .daynum.sat { color: var(--sat-color); }
+  .event-card {
+    border-radius: 5px; margin-bottom: 3px; padding: 3px 6px;
+    cursor: pointer; font-size: 9px; font-weight: 500;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  /* ---------- 사이드 패널 ---------- */
+  .panel {
+    background: var(--color-bg);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    max-height: calc(100vh - 96px);
+    overflow-y: auto;
+  }
+  .panel-empty { font-size: 13px; color: var(--color-text-tertiary); text-align: center; padding: 40px 10px; }
+  .panel-date { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .panel-subtitle { font-size: 12px; color: var(--color-text-tertiary); margin-bottom: 14px; }
+  .panel-add-btn { width: 100%; margin-bottom: 14px; }
+  .panel-list-item {
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    padding: 10px 12px; margin-bottom: 8px; cursor: pointer;
+  }
+  .panel-list-item:hover { background: var(--color-bg-secondary); }
+  .panel-list-cat { font-size: 11px; font-weight: 600; margin-bottom: 2px; }
+  .panel-list-brand { font-size: 11px; color: var(--color-text-secondary); margin-bottom: 2px; }
+  .panel-list-main { font-size: 13px; font-weight: 500; }
+  .panel-list-sub { font-size: 11px; color: var(--color-text-secondary); margin-top: 2px; }
+  .panel-back-btn {
+    font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px;
+    display: inline-flex; align-items: center; gap: 4px;
+    cursor: pointer; border: none; background: none; padding: 0;
+  }
+  .panel-back-btn:hover { color: var(--color-text); }
+  h2.panel-title { font-size: 16px; font-weight: 600; margin: 0 0 14px; }
+
+  /* 폼 공통 */
+  .cat-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .cat-btn { padding: 5px 12px; font-size: 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-bg); cursor: pointer; }
+  .brand-row { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
+  .brand-btn { padding: 4px 10px; font-size: 12px; border-radius: var(--radius-md); border: 1px solid var(--color-border); background: var(--color-bg); cursor: pointer; }
+  .brand-btn.active { border-color: #1a1a18; background: #f4f4f2; font-weight: 600; }
+  .field { margin-bottom: 10px; }
+  .field-label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .field input, .field textarea, .field select {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--color-border);
+    border-radius: var(--radius-md); font-size: 13px; font-family: inherit;
+    background: var(--color-bg); color: var(--color-text);
+  }
+  .field textarea { resize: vertical; }
+  .section-label {
+    font-size: 12px; font-weight: 600; color: var(--color-text-secondary);
+    margin: 14px 0 8px; padding-bottom: 4px;
+    border-bottom: 1px solid var(--color-border);
+  }
+
+  /* 원부자재 / 옵션 행 */
+  .mat-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 0.8fr 0.8fr 0.8fr 26px;
+    gap: 5px; margin-bottom: 6px; align-items: center;
+  }
+  .mat-row input { padding: 6px; font-size: 12px; min-width: 0; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-family: inherit; background: var(--color-bg); }
+  .opt-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr 26px;
+    gap: 5px; margin-bottom: 6px; align-items: center;
+  }
+  .opt-row input { padding: 6px; font-size: 12px; min-width: 0; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-family: inherit; background: var(--color-bg); }
+  .row-header {
+    display: grid; gap: 5px; margin-bottom: 4px;
+  }
+  .row-header div { font-size: 11px; color: var(--color-text-secondary); }
+  .icon-btn {
+    width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+    border: 1px solid var(--color-border); border-radius: var(--radius-md);
+    background: var(--color-bg); cursor: pointer; flex-shrink: 0; padding: 0; font-size: 13px;
+  }
+  .icon-btn:disabled { opacity: 0.35; cursor: default; }
+  .add-row-btn { font-size: 12px; margin-top: 4px; padding: 5px 10px; }
+
+  .btn-row { display: flex; justify-content: space-between; margin-top: 18px; }
+  .btn-row-right { display: flex; gap: 8px; }
+  .danger { color: var(--sun-color); border-color: var(--sun-color); }
+  .loading-text { font-size: 13px; color: var(--color-text-secondary); padding: 30px; text-align: center; }
+  .spinner-inline { display:inline-block; width:12px; height:12px; border:2px solid var(--color-border); border-top-color: var(--color-text); border-radius:50%; animation: spin 0.7s linear infinite; vertical-align:middle; margin-right:6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .toast { position: fixed; bottom: 24px; right: 24px; background: var(--color-text); color: #fff; padding: 10px 16px; border-radius: var(--radius-md); font-size: 13px; z-index: 100; }
+
+  @media (max-width: 980px) {
+    .layout { flex-direction: column; }
+    .side-col { width: 100%; position: static; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <div class="main-col">
+    <div class="topbar">
+      <div class="topbar-title-row">
+        <div class="topbar-left">
+          <h1 id="month-label">2026년 6월</h1>
+        </div>
+        <div class="topbar-right">
+          <div class="legend">
+            <div class="legend-item"><span class="dot" style="background:#4A90D9;"></span>샘플</div>
+            <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>메인</div>
+            <div class="legend-item"><span class="dot" style="background:#9B59B6;"></span>리오더</div>
+            <div class="legend-item"><span class="dot" style="background:#27AE60;"></span>미팅</div>
+          </div>
+          <button id="prev-btn">&#9666;</button>
+          <button id="today-btn">오늘</button>
+          <button id="next-btn">&#9656;</button>
+          <button id="refresh-btn">새로고침</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="calendar-card">
+      <div class="weekday-row" id="weekday-row"></div>
+      <div class="grid" id="grid">
+        <div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="side-col">
+    <div class="panel" id="panel">
+      <div class="panel-empty">날짜를 클릭하면 그날의 일정이 여기에 표시됩니다.</div>
+    </div>
+  </div>
+</div>
+<div id="toast-root"></div>
+
+<script>
+/* ============================================================
+   ⚠️ Apps Script 배포 후 아래 API_URL을 교체해 주세요.
+   ============================================================ */
+var API_URL = "YOUR_APPS_SCRIPT_WEB_APP_URL_HERE";
+
+var CATS = {
+  sample:  { label: "샘플",  color: "#4A90D9", bg: "#EAF3FB", text: "#1A5A96" },
+  main:    { label: "메인",  color: "#E24B4A", bg: "#FCEBEB", text: "#7A1F1F" },
+  reorder: { label: "리오더", color: "#9B59B6", bg: "#F4EBF9", text: "#5C2E78" },
+  meeting: { label: "미팅",  color: "#27AE60", bg: "#E8F8EE", text: "#145C32" }
+};
+
+var BRANDS = ["엔오디", "헤오진", "직접입력"];
+var STAGES = [
+  { value: "instruct", label: "투입" },
+  { value: "expected", label: "예정" },
+  { value: "completed", label: "완료" }
+];
+
+var today = new Date();
+var view = { year: today.getFullYear(), month: today.getMonth() };
+var events = [];
+var selectedDate = null;
+
+var monthLabel  = document.getElementById("month-label");
+var weekdayRow  = document.getElementById("weekday-row");
+var grid        = document.getElementById("grid");
+var panel       = document.getElementById("panel");
+var toastRoot   = document.getElementById("toast-root");
+
+["일","월","화","수","목","금","토"].forEach(function(d, i){
+  var el = document.createElement("div");
+  el.textContent = d;
+  if (i === 0) el.className = "sun";
+  if (i === 6) el.className = "sat";
+  weekdayRow.appendChild(el);
+});
+
+/* ---- 유틸 ---- */
+function fmt(y,m,d){ return y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0"); }
+function fmtKorean(ds){
+  var d=new Date(ds+"T00:00:00"), wd=["일","월","화","수","목","금","토"][d.getDay()];
+  return (d.getMonth()+1)+"월 "+d.getDate()+"일 ("+wd+")";
+}
+function showToast(msg){
+  toastRoot.innerHTML="";
+  var t=document.createElement("div"); t.className="toast"; t.textContent=msg;
+  toastRoot.appendChild(t); setTimeout(function(){ toastRoot.innerHTML=""; }, 2500);
+}
+function stageLabel(v){ var s=STAGES.find(function(s){return s.value===v;}); return s?s.label:v; }
+
+/* ---- API ---- */
+function apiGet(){ return fetch(API_URL+"?action=events").then(function(r){return r.json();}); }
+function apiPost(body){ return fetch(API_URL,{method:"POST",body:JSON.stringify(body)}).then(function(r){return r.json();}); }
+function loadEvents(){ return apiGet().then(function(d){ events=d.events||[]; }).catch(function(){ showToast("데이터를 불러오지 못했습니다."); }); }
+
+/* ---- 옵션 파싱 ---- */
+function parseOptions(str){
+  if(!str) return [{color:"",size:"",qty:""}];
+  return str.split(";").map(function(p){
+    var b=p.trim().split("/"); return {color:b[0]||"",size:b[1]||"",qty:b[2]||""};
+  });
+}
+function stringifyOptions(arr){
+  return arr.filter(function(v){return v.color||v.size||v.qty;})
+    .map(function(v){return [v.color,v.size,v.qty].join("/");}).join("; ");
+}
+function parseMaterials(str){
+  if(!str) return [{co:"",item:"",color:"",usage:"",price:""}];
+  return str.split("|").map(function(p){
+    var b=p.trim().split("/");
+    return {co:b[0]||"",item:b[1]||"",color:b[2]||"",usage:b[3]||"",price:b[4]||""};
+  });
+}
+function stringifyMaterials(arr){
+  return arr.filter(function(v){return v.co||v.item||v.color||v.usage||v.price;})
+    .map(function(v){return [v.co,v.item,v.color,v.usage,v.price].join("/");}).join("|");
+}
+
+/* ---- 캘린더 렌더 ---- */
+function buildCell(dateStr, dayNum, isOutside){
+  var cell=document.createElement("div"); cell.className="cell";
+  if(isOutside){ cell.className+=" outside"; return cell; }
+  var isToday=dateStr===fmt(today.getFullYear(),today.getMonth(),today.getDate());
+  var d=new Date(dateStr+"T00:00:00"), dow=d.getDay();
+  if(isToday) cell.className+=" today";
+  if(selectedDate===dateStr) cell.className+=" selected";
+  var num=document.createElement("div");
+  num.textContent=dayNum;
+  num.className="daynum"+(isToday?" today":(dow===0?" sun":(dow===6?" sat":"")));
+  cell.appendChild(num);
+
+  events.filter(function(e){return e.date===dateStr;}).forEach(function(ev){
+    var c=CATS[ev.category]||CATS.meeting;
+    var card=document.createElement("div"); card.className="event-card";
+    card.style.background=c.bg; card.style.color=c.text;
+    var label = ev.brand ? "["+ev.brand+"] " : "";
+    if(ev.category==="sample"||ev.category==="main"||ev.category==="reorder"){
+      label += (ev.item||"");
+      if(ev.stage) label += " · "+stageLabel(ev.stage);
+    } else {
+      label += (ev.company||ev.item||"");
+    }
+    card.textContent=label;
+    cell.appendChild(card);
+  });
+
+  cell.addEventListener("click", function(){ selectedDate=dateStr; render(); renderPanelList(dateStr); });
+  return cell;
+}
+
+function render(){
+  monthLabel.textContent=view.year+"년 "+(view.month+1)+"월";
+  grid.innerHTML="";
+  var firstDay=new Date(view.year,view.month,1).getDay();
+  var daysInMonth=new Date(view.year,view.month+1,0).getDate();
+  var total=Math.ceil((firstDay+daysInMonth)/7)*7;
+  for(var i=0;i<total;i++){
+    var dn=i-firstDay+1;
+    if(dn<1||dn>daysInMonth){ grid.appendChild(buildCell(null,null,true)); continue; }
+    grid.appendChild(buildCell(fmt(view.year,view.month,dn),dn,false));
+  }
+}
+
+function refreshAll(){
+  grid.innerHTML='<div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>';
+  loadEvents().then(function(){ render(); if(selectedDate) renderPanelList(selectedDate); });
+}
+
+/* ---- 사이드 패널: 목록 ---- */
+function renderPanelList(dateStr){
+  selectedDate=dateStr; panel.innerHTML="";
+  var dateEl=document.createElement("div"); dateEl.className="panel-date"; dateEl.textContent=fmtKorean(dateStr); panel.appendChild(dateEl);
+  var dayEv=events.filter(function(e){return e.date===dateStr;});
+  var sub=document.createElement("div"); sub.className="panel-subtitle";
+  sub.textContent=dayEv.length>0?"일정 "+dayEv.length+"건":"등록된 일정이 없습니다"; panel.appendChild(sub);
+  var addBtn=document.createElement("button"); addBtn.className="primary panel-add-btn"; addBtn.textContent="+ 새 일정 추가";
+  addBtn.addEventListener("click",function(){ renderPanelForm(dateStr,null); }); panel.appendChild(addBtn);
+
+  dayEv.forEach(function(ev){
+    var c=CATS[ev.category]||CATS.meeting;
+    var item=document.createElement("div"); item.className="panel-list-item";
+    item.style.borderLeftColor=c.color; item.style.borderLeftWidth="3px"; item.style.borderLeftStyle="solid";
+
+    var catEl=document.createElement("div"); catEl.className="panel-list-cat"; catEl.style.color=c.text;
+    catEl.textContent=c.label+(ev.stage?" · "+stageLabel(ev.stage):"")+(ev.order?" · "+ev.order+"차":"");
+    item.appendChild(catEl);
+
+    if(ev.brand){
+      var brandEl=document.createElement("div"); brandEl.className="panel-list-brand";
+      brandEl.textContent=ev.brand; item.appendChild(brandEl);
+    }
+
+    var mainEl=document.createElement("div"); mainEl.className="panel-list-main";
+    if(ev.category==="meeting"){
+      mainEl.textContent=(ev.company||"")+(ev.content?" — "+ev.content.slice(0,20):"");
+    } else {
+      mainEl.textContent=(ev.item||"")+(ev.company?" ("+ev.company+")":"");
+    }
+    item.appendChild(mainEl);
+
+    if((ev.category==="main"||ev.category==="reorder")&&ev.options){
+      var opts=parseOptions(ev.options).filter(function(v){return v.color||v.size||v.qty;});
+      if(opts.length>0){
+        var sub2=document.createElement("div"); sub2.className="panel-list-sub";
+        sub2.textContent=opts.map(function(o){return [o.color,o.size,o.qty].filter(Boolean).join("-");}).join(", ");
+        item.appendChild(sub2);
+      }
+    }
+    if(ev.category==="sample"&&ev.materials){
+      var mats=parseMaterials(ev.materials).filter(function(v){return v.co||v.item;});
+      if(mats.length>0){
+        var sub3=document.createElement("div"); sub3.className="panel-list-sub";
+        sub3.textContent="원부자재 "+mats.length+"건: "+mats.map(function(m){return m.item||m.co;}).join(", ");
+        item.appendChild(sub3);
+      }
+    }
+
+    item.addEventListener("click", function(){ renderPanelForm(dateStr,ev); }); panel.appendChild(item);
+  });
+}
+
+/* ---- 사이드 패널: 등록/수정 폼 ---- */
+function renderPanelForm(dateStr, ev){
+  var isEdit=!!ev;
+  var cat=isEdit?ev.category:"sample";
+  var brand=isEdit?ev.brand:"엔오디";
+  var options=isEdit&&ev.options?parseOptions(ev.options):[{color:"",size:"",qty:""}];
+  var materials=isEdit&&ev.materials?parseMaterials(ev.materials):[{co:"",item:"",color:"",usage:"",price:""}];
+
+  panel.innerHTML="";
+  var backBtn=document.createElement("button"); backBtn.className="panel-back-btn"; backBtn.textContent="← 목록으로";
+  backBtn.addEventListener("click",function(){ renderPanelList(dateStr); }); panel.appendChild(backBtn);
+
+  var titleEl=document.createElement("h2"); titleEl.className="panel-title";
+  titleEl.textContent=isEdit?"일정 수정":"일정 등록"; panel.appendChild(titleEl);
+
+  /* 카테고리 선택 */
+  var catRow=document.createElement("div"); catRow.className="cat-row";
+  Object.keys(CATS).forEach(function(key){
+    var b=document.createElement("button"); b.className="cat-btn"; b.textContent=CATS[key].label; b.dataset.cat=key;
+    function paint(){ var sel=key===cat; b.style.borderColor=sel?CATS[key].color:""; b.style.background=sel?CATS[key].bg:""; b.style.color=sel?CATS[key].text:""; }
+    paint();
+    b.addEventListener("click",function(){
+      cat=key;
+      Array.prototype.forEach.call(catRow.children,function(btn){ var k=btn.dataset.cat; var sel=k===cat; btn.style.borderColor=sel?CATS[k].color:""; btn.style.background=sel?CATS[k].bg:""; btn.style.color=sel?CATS[k].text:""; });
+      renderFormArea();
+    });
+    catRow.appendChild(b);
+  }); panel.appendChild(catRow);
+
+  /* 브랜드 선택 */
+  var brandSection=document.createElement("div"); brandSection.className="field";
+  var brandLabel=document.createElement("div"); brandLabel.className="field-label"; brandLabel.textContent="브랜드"; brandSection.appendChild(brandLabel);
+  var brandRow=document.createElement("div"); brandRow.className="brand-row";
+  var brandCustomInput=null;
+  BRANDS.forEach(function(b){
+    var btn=document.createElement("button"); btn.className="brand-btn"; btn.textContent=b;
+    if(b===brand||(brand&&!BRANDS.slice(0,2).includes(brand)&&b==="직접입력")) btn.classList.add("active");
+    btn.addEventListener("click",function(){
+      brand=b;
+      Array.prototype.forEach.call(brandRow.children,function(el){ el.classList.remove("active"); });
+      btn.classList.add("active");
+      if(brandCustomInput) brandCustomInput.style.display=b==="직접입력"?"block":"none";
+    });
+    brandRow.appendChild(btn);
+  });
+  brandSection.appendChild(brandRow);
+  brandCustomInput=document.createElement("input"); brandCustomInput.type="text"; brandCustomInput.placeholder="브랜드명 직접 입력";
+  brandCustomInput.style.display=(brand&&!["엔오디","헤오진"].includes(brand))?"block":"none";
+  brandCustomInput.style.marginTop="6px";
+  if(brand&&!["엔오디","헤오진"].includes(brand)) brandCustomInput.value=brand;
+  brandCustomInput.addEventListener("input",function(){ brand=brandCustomInput.value; });
+  brandSection.appendChild(brandCustomInput);
+  panel.appendChild(brandSection);
+
+  /* 날짜 */
+  var dateField=document.createElement("div"); dateField.className="field";
+  var dateLabel2=document.createElement("div"); dateLabel2.className="field-label"; dateLabel2.textContent="날짜"; dateField.appendChild(dateLabel2);
+  var dateInput=document.createElement("input"); dateInput.type="date"; dateInput.value=isEdit?ev.date:dateStr;
+  dateField.appendChild(dateInput); panel.appendChild(dateField);
+
+  /* 폼 영역 */
+  var formArea=document.createElement("div"); panel.appendChild(formArea);
+  var fields={};
+
+  function mkField(label, key, val, isTextarea){
+    var wrap=document.createElement("div"); wrap.className="field";
+    var lab=document.createElement("div"); lab.className="field-label"; lab.textContent=label; wrap.appendChild(lab);
+    var inp=document.createElement(isTextarea?"textarea":"input");
+    if(!isTextarea) inp.type="text"; if(isTextarea) inp.rows=3;
+    inp.value=val||""; wrap.appendChild(inp);
+    fields[key]=inp; formArea.appendChild(wrap);
+  }
+  function mkSelect(label, key, optList, val){
+    var wrap=document.createElement("div"); wrap.className="field";
+    var lab=document.createElement("div"); lab.className="field-label"; lab.textContent=label; wrap.appendChild(lab);
+    var sel=document.createElement("select");
+    optList.forEach(function(o){ var op=document.createElement("option"); op.value=o.value; op.textContent=o.label; if(o.value===val) op.selected=true; sel.appendChild(op); });
+    wrap.appendChild(sel); fields[key]=sel; formArea.appendChild(wrap);
+  }
+
+  var optListEl, matListEl;
+
+  function renderOptRows(){
+    optListEl.innerHTML="";
+    var hdr=document.createElement("div"); hdr.className="row-header opt-row";
+    ["컬러","사이즈","수량",""].forEach(function(t){ var d=document.createElement("div"); d.textContent=t; hdr.appendChild(d); });
+    optListEl.appendChild(hdr);
+    options.forEach(function(v,idx){
+      var row=document.createElement("div"); row.className="opt-row";
+      ["color","size","qty"].forEach(function(k,ci){
+        var inp=document.createElement("input"); inp.type="text"; inp.placeholder=["컬러","사이즈","수량"][ci]; inp.value=v[k]||"";
+        inp.addEventListener("input",function(){ v[k]=inp.value; }); row.appendChild(inp);
+      });
+      var rm=document.createElement("button"); rm.className="icon-btn"; rm.textContent="✕"; rm.disabled=options.length===1;
+      rm.addEventListener("click",function(){ if(options.length===1) return; options.splice(idx,1); renderOptRows(); });
+      row.appendChild(rm); optListEl.appendChild(row);
+    });
+  }
+
+  function renderMatRows(){
+    matListEl.innerHTML="";
+    var hdr=document.createElement("div"); hdr.className="row-header mat-row";
+    ["업체명","아이템명","컬러","요척","단가",""].forEach(function(t){ var d=document.createElement("div"); d.textContent=t; hdr.appendChild(d); });
+    matListEl.appendChild(hdr);
+    materials.forEach(function(v,idx){
+      var row=document.createElement("div"); row.className="mat-row";
+      [["co","업체명"],["item","아이템명"],["color","컬러"],["usage","요척"],["price","단가"]].forEach(function(kp){
+        var inp=document.createElement("input"); inp.type="text"; inp.placeholder=kp[1]; inp.value=v[kp[0]]||"";
+        inp.addEventListener("input",function(){ v[kp[0]]=inp.value; }); row.appendChild(inp);
+      });
+      var rm=document.createElement("button"); rm.className="icon-btn"; rm.textContent="✕"; rm.disabled=materials.length===1;
+      rm.addEventListener("click",function(){ if(materials.length===1) return; materials.splice(idx,1); renderMatRows(); });
+      row.appendChild(rm); matListEl.appendChild(row);
+    });
+  }
+
+  function renderFormArea(){
+    formArea.innerHTML=""; fields={};
+    if(cat==="sample"){
+      mkField("상품명","item",isEdit?ev.item:"");
+      var secLabel=document.createElement("div"); secLabel.className="section-label"; secLabel.textContent="원부자재"; formArea.appendChild(secLabel);
+      matListEl=document.createElement("div"); formArea.appendChild(matListEl); renderMatRows();
+      var addMatBtn=document.createElement("button"); addMatBtn.className="add-row-btn"; addMatBtn.textContent="+ 원부자재 추가";
+      addMatBtn.addEventListener("click",function(){ materials.push({co:"",item:"",color:"",usage:"",price:""}); renderMatRows(); });
+      formArea.appendChild(addMatBtn);
+    } else if(cat==="main"){
+      mkField("업체명","company",isEdit?ev.company:"");
+      mkField("상품명","item",isEdit?ev.item:"");
+      mkSelect("단계","stage",STAGES,isEdit?ev.stage:"instruct");
+      var secLabel2=document.createElement("div"); secLabel2.className="section-label"; secLabel2.textContent="옵션 (컬러/사이즈/수량)"; formArea.appendChild(secLabel2);
+      optListEl=document.createElement("div"); formArea.appendChild(optListEl); renderOptRows();
+      var addOptBtn=document.createElement("button"); addOptBtn.className="add-row-btn"; addOptBtn.textContent="+ 옵션 추가";
+      addOptBtn.addEventListener("click",function(){ options.push({color:"",size:"",qty:""}); renderOptRows(); });
+      formArea.appendChild(addOptBtn);
+    } else if(cat==="reorder"){
+      mkField("업체명","company",isEdit?ev.company:"");
+      mkField("상품명","item",isEdit?ev.item:"");
+      mkField("차수","order",isEdit?ev.order:"");
+      mkSelect("단계","stage",STAGES,isEdit?ev.stage:"instruct");
+      var secLabel3=document.createElement("div"); secLabel3.className="section-label"; secLabel3.textContent="옵션 (컬러/사이즈/수량)"; formArea.appendChild(secLabel3);
+      optListEl=document.createElement("div"); formArea.appendChild(optListEl); renderOptRows();
+      var addOptBtn2=document.createElement("button"); addOptBtn2.className="add-row-btn"; addOptBtn2.textContent="+ 옵션 추가";
+      addOptBtn2.addEventListener("click",function(){ options.push({color:"",size:"",qty:""}); renderOptRows(); });
+      formArea.appendChild(addOptBtn2);
+    } else if(cat==="meeting"){
+      mkField("업체명","company",isEdit?ev.company:"");
+      mkField("시간","stage",isEdit?ev.stage:"");
+      mkField("내용","content",isEdit?ev.content:"",true);
+    }
+  }
+  renderFormArea();
+
+  /* 저장/삭제 버튼 */
+  var btnRow=document.createElement("div"); btnRow.className="btn-row";
+  var leftBtns=document.createElement("div");
+  if(isEdit){
+    var delBtn=document.createElement("button"); delBtn.className="danger"; delBtn.textContent="삭제";
+    delBtn.addEventListener("click",function(){
+      delBtn.disabled=true; delBtn.textContent="삭제 중...";
+      apiPost({action:"delete",id:ev.id}).then(function(){ showToast("삭제되었습니다."); refreshAllAndPanel(dateStr); });
+    });
+    leftBtns.appendChild(delBtn);
+  }
+  btnRow.appendChild(leftBtns);
+  var rightBtns=document.createElement("div"); rightBtns.className="btn-row-right";
+  var cancelBtn=document.createElement("button"); cancelBtn.textContent="취소";
+  cancelBtn.addEventListener("click",function(){ renderPanelList(dateStr); }); rightBtns.appendChild(cancelBtn);
+  var saveBtn=document.createElement("button"); saveBtn.className="primary"; saveBtn.textContent="저장";
+  saveBtn.addEventListener("click",function(){
+    saveBtn.disabled=true; saveBtn.textContent="저장 중...";
+    var finalBrand = (brand==="직접입력") ? (brandCustomInput?brandCustomInput.value:"") : brand;
+    var payload={
+      id: isEdit?ev.id:undefined,
+      date: dateInput.value,
+      category: cat,
+      brand: finalBrand,
+      stage: fields.stage?fields.stage.value:"",
+      order: fields.order?fields.order.value:"",
+      company: fields.company?fields.company.value:"",
+      item: fields.item?fields.item.value:"",
+      options: (cat==="main"||cat==="reorder")?stringifyOptions(options):"",
+      materials: cat==="sample"?stringifyMaterials(materials):"",
+      content: fields.content?fields.content.value:""
+    };
+    apiPost({action:isEdit?"update":"create",data:payload}).then(function(res){
+      if(res.success===false){ showToast(res.error||"저장 중 오류가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; return; }
+      showToast("저장되었습니다."); refreshAllAndPanel(dateInput.value);
+    }).catch(function(){ showToast("저장 중 오류가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; });
+  });
+  rightBtns.appendChild(saveBtn); btnRow.appendChild(rightBtns); panel.appendChild(btnRow);
+}
+
+function refreshAllAndPanel(dateStr){
+  loadEvents().then(function(){ render(); renderPanelList(dateStr); });
+}
+
+document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} refreshAll(); });
+document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} refreshAll(); });
+document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); refreshAll(); });
+document.getElementById("refresh-btn").addEventListener("click",refreshAll);
+
+refreshAll();
+</script>
+</body>
+</html>
