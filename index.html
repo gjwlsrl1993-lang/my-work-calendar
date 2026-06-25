@@ -287,9 +287,37 @@ function showToast(msg){
 function stageLabel(v){ var s=STAGES.find(function(s){return s.value===v;}); return s?s.label:v; }
 
 /* ---- API ---- */
-function apiGet(){ return fetch(API_URL+"?action=events").then(function(r){return r.json();}); }
+function apiGet(){ return fetch(API_URL+"?action=events",{cache:"no-store"}).then(function(r){return r.json();}); }
 function apiPost(body){ return fetch(API_URL,{method:"POST",body:JSON.stringify(body)}).then(function(r){return r.json();}); }
 function loadEvents(){ return apiGet().then(function(d){ events=d.events||[]; }).catch(function(){ showToast("데이터를 불러오지 못했습니다."); }); }
+
+/* 로컬 캐시 업데이트 — 서버 재요청 없이 화면만 갱신 */
+function localCreate(data, newId){
+  events.push({
+    id: newId, date: data.date, category: data.category,
+    brand: data.brand||"", stage: data.stage||"", order: data.order||"",
+    company: data.company||"", item: data.item||"",
+    options: data.options||"", materials: data.materials||"", content: data.content||""
+  });
+}
+function localUpdate(data){
+  for(var i=0;i<events.length;i++){
+    if(String(events[i].id)===String(data.id)){
+      events[i]={
+        id: data.id, date: data.date, category: data.category,
+        brand: data.brand||"", stage: data.stage||"", order: data.order||"",
+        company: data.company||"", item: data.item||"",
+        options: data.options||"", materials: data.materials||"", content: data.content||""
+      };
+      break;
+    }
+  }
+}
+function localDelete(id){
+  for(var i=0;i<events.length;i++){
+    if(String(events[i].id)===String(id)){ events.splice(i,1); break; }
+  }
+}
 
 /* ---- 옵션 파싱 ---- */
 function parseOptions(str){
@@ -331,18 +359,26 @@ function buildCell(dateStr, dayNum, isOutside){
     var c=CATS[ev.category]||CATS.meeting;
     var card=document.createElement("div"); card.className="event-card";
     card.style.background=c.bg; card.style.color=c.text;
-    var label = ev.brand ? "["+ev.brand+"] " : "";
-    if(ev.category==="sample"||ev.category==="main"||ev.category==="reorder"){
+    if(ev.category==="meeting"){
+      var strong=document.createElement("strong"); strong.textContent=ev.company||"";
+      card.appendChild(strong);
+      if(ev.stage){ card.appendChild(document.createTextNode(" · "+ev.stage)); }
+    } else {
+      var label = ev.brand ? "["+ev.brand+"] " : "";
       label += (ev.item||"");
       if(ev.stage) label += " · "+stageLabel(ev.stage);
-    } else {
-      label += (ev.company||ev.item||"");
+      card.textContent=label;
     }
-    card.textContent=label;
     cell.appendChild(card);
   });
 
-  cell.addEventListener("click", function(){ selectedDate=dateStr; render(); renderPanelList(dateStr); });
+  cell.addEventListener("click", function(){
+    var prev = document.querySelector(".cell.selected");
+    if(prev) prev.classList.remove("selected");
+    cell.classList.add("selected");
+    selectedDate=dateStr;
+    renderPanelList(dateStr);
+  });
   return cell;
 }
 
@@ -380,10 +416,22 @@ function renderPanelList(dateStr){
     item.style.borderLeftColor=c.color; item.style.borderLeftWidth="3px"; item.style.borderLeftStyle="solid";
 
     var catEl=document.createElement("div"); catEl.className="panel-list-cat"; catEl.style.color=c.text;
-    catEl.textContent=c.label+(ev.stage?" · "+stageLabel(ev.stage):"")+(ev.order?" · "+ev.order+"차":"");
+    var catText = c.label;
+    if(ev.stage) catText += " · "+stageLabel(ev.stage);
+    if(ev.order){
+      if(ev.category==="reorder" && ev.order.indexOf(" / ")>-1){
+        var parts=ev.order.split(" / ");
+        catText += " · "+parts[0].trim()+"차 · "+parts[1].trim();
+      } else if(ev.category==="reorder"){
+        catText += " · "+ev.order+"차";
+      } else if(ev.category!=="meeting"){
+        catText += " · "+ev.order; // 시즌
+      }
+    }
+    catEl.textContent=catText;
     item.appendChild(catEl);
 
-    if(ev.brand){
+    if(ev.brand && ev.category!=="meeting"){
       var brandEl=document.createElement("div"); brandEl.className="panel-list-brand";
       brandEl.textContent=ev.brand; item.appendChild(brandEl);
     }
@@ -441,6 +489,7 @@ function renderPanelForm(dateStr, ev){
     b.addEventListener("click",function(){
       cat=key;
       Array.prototype.forEach.call(catRow.children,function(btn){ var k=btn.dataset.cat; var sel=k===cat; btn.style.borderColor=sel?CATS[k].color:""; btn.style.background=sel?CATS[k].bg:""; btn.style.color=sel?CATS[k].text:""; });
+      brandSection.style.display = cat==="meeting" ? "none" : "";
       renderFormArea();
     });
     catRow.appendChild(b);
@@ -470,12 +519,49 @@ function renderPanelForm(dateStr, ev){
   brandCustomInput.addEventListener("input",function(){ brand=brandCustomInput.value; });
   brandSection.appendChild(brandCustomInput);
   panel.appendChild(brandSection);
+  if(cat==="meeting") brandSection.style.display="none";
 
-  /* 날짜 */
-  var dateField=document.createElement("div"); dateField.className="field";
+  /* 날짜 + 시즌 */
+  var dateSeasonRow=document.createElement("div");
+  dateSeasonRow.style.cssText="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end;";
+
+  var dateField=document.createElement("div"); dateField.style.cssText="flex:1;";
   var dateLabel2=document.createElement("div"); dateLabel2.className="field-label"; dateLabel2.textContent="날짜"; dateField.appendChild(dateLabel2);
   var dateInput=document.createElement("input"); dateInput.type="date"; dateInput.value=isEdit?ev.date:dateStr;
-  dateField.appendChild(dateInput); panel.appendChild(dateField);
+  dateInput.style.width="100%";
+  dateField.appendChild(dateInput);
+  dateSeasonRow.appendChild(dateField);
+
+  var seasonField=document.createElement("div"); seasonField.style.cssText="flex:1;";
+  var seasonLabel=document.createElement("div"); seasonLabel.className="field-label"; seasonLabel.textContent="시즌"; seasonField.appendChild(seasonLabel);
+  var seasonSel=document.createElement("select"); seasonSel.style.width="100%";
+  ["26FW","27SS","27FW"].forEach(function(s){
+    var o=document.createElement("option"); o.value=s; o.textContent=s;
+    // 수정 시: 리오더는 "차수 / 시즌"에서 파싱, 그 외는 order 값 직접 비교
+    var savedSeason = "";
+    if(isEdit){
+      if(cat==="reorder" && ev.order && ev.order.indexOf(" / ")>-1){
+        savedSeason = ev.order.split(" / ").pop().trim();
+      } else {
+        savedSeason = ev.order || "";
+      }
+    }
+    if(savedSeason===s) o.selected=true;
+    seasonSel.appendChild(o);
+  });
+  seasonField.appendChild(seasonSel);
+  dateSeasonRow.appendChild(seasonField);
+  panel.appendChild(dateSeasonRow);
+
+  if(cat==="meeting") seasonField.style.display="none";
+
+  /* 카테고리 변경 시 시즌 show/hide도 함께 처리 */
+  var origCatClickHandlers = [];
+  Array.prototype.forEach.call(catRow.children, function(btn){
+    btn.addEventListener("click", function(){
+      seasonField.style.display = (cat==="meeting") ? "none" : "";
+    });
+  });
 
   /* 폼 영역 */
   var formArea=document.createElement("div"); panel.appendChild(formArea);
@@ -536,6 +622,8 @@ function renderPanelForm(dateStr, ev){
   function renderFormArea(){
     formArea.innerHTML=""; fields={};
     if(cat==="sample"){
+      mkSelect("단계","stage",STAGES,isEdit?ev.stage:"instruct");
+      mkField("업체명","company",isEdit?ev.company:"");
       mkField("상품명","item",isEdit?ev.item:"");
       var secLabel=document.createElement("div"); secLabel.className="section-label"; secLabel.textContent="원부자재"; formArea.appendChild(secLabel);
       matListEl=document.createElement("div"); formArea.appendChild(matListEl); renderMatRows();
@@ -543,19 +631,23 @@ function renderPanelForm(dateStr, ev){
       addMatBtn.addEventListener("click",function(){ materials.push({co:"",item:"",color:"",usage:"",price:""}); renderMatRows(); });
       formArea.appendChild(addMatBtn);
     } else if(cat==="main"){
+      mkSelect("단계","stage",STAGES,isEdit?ev.stage:"instruct");
       mkField("업체명","company",isEdit?ev.company:"");
       mkField("상품명","item",isEdit?ev.item:"");
-      mkSelect("단계","stage",STAGES,isEdit?ev.stage:"instruct");
       var secLabel2=document.createElement("div"); secLabel2.className="section-label"; secLabel2.textContent="옵션 (컬러/사이즈/수량)"; formArea.appendChild(secLabel2);
       optListEl=document.createElement("div"); formArea.appendChild(optListEl); renderOptRows();
       var addOptBtn=document.createElement("button"); addOptBtn.className="add-row-btn"; addOptBtn.textContent="+ 옵션 추가";
       addOptBtn.addEventListener("click",function(){ options.push({color:"",size:"",qty:""}); renderOptRows(); });
       formArea.appendChild(addOptBtn);
     } else if(cat==="reorder"){
+      mkSelect("단계","stage",STAGES,isEdit?ev.stage:"instruct");
       mkField("업체명","company",isEdit?ev.company:"");
       mkField("상품명","item",isEdit?ev.item:"");
-      mkField("차수","order",isEdit?ev.order:"");
-      mkSelect("단계","stage",STAGES,isEdit?ev.stage:"instruct");
+      var savedOrderNum = "";
+      if(isEdit && ev.order){
+        savedOrderNum = ev.order.indexOf(" / ")>-1 ? ev.order.split(" / ")[0].trim() : ev.order;
+      }
+      mkField("차수","order",savedOrderNum);
       var secLabel3=document.createElement("div"); secLabel3.className="section-label"; secLabel3.textContent="옵션 (컬러/사이즈/수량)"; formArea.appendChild(secLabel3);
       optListEl=document.createElement("div"); formArea.appendChild(optListEl); renderOptRows();
       var addOptBtn2=document.createElement("button"); addOptBtn2.className="add-row-btn"; addOptBtn2.textContent="+ 옵션 추가";
@@ -576,7 +668,11 @@ function renderPanelForm(dateStr, ev){
     var delBtn=document.createElement("button"); delBtn.className="danger"; delBtn.textContent="삭제";
     delBtn.addEventListener("click",function(){
       delBtn.disabled=true; delBtn.textContent="삭제 중...";
-      apiPost({action:"delete",id:ev.id}).then(function(){ showToast("삭제되었습니다."); refreshAllAndPanel(dateStr); });
+      localDelete(ev.id);         // 즉시 로컬 반영
+      render();
+      renderPanelList(dateStr);
+      showToast("삭제되었습니다.");
+      apiPost({action:"delete",id:ev.id});  // 백그라운드에서 서버 저장
     });
     leftBtns.appendChild(delBtn);
   }
@@ -587,30 +683,56 @@ function renderPanelForm(dateStr, ev){
   var saveBtn=document.createElement("button"); saveBtn.className="primary"; saveBtn.textContent="저장";
   saveBtn.addEventListener("click",function(){
     saveBtn.disabled=true; saveBtn.textContent="저장 중...";
-    var finalBrand = (brand==="직접입력") ? (brandCustomInput?brandCustomInput.value:"") : brand;
-    var payload={
-      id: isEdit?ev.id:undefined,
-      date: dateInput.value,
-      category: cat,
-      brand: finalBrand,
-      stage: fields.stage?fields.stage.value:"",
-      order: fields.order?fields.order.value:"",
-      company: fields.company?fields.company.value:"",
-      item: fields.item?fields.item.value:"",
-      options: (cat==="main"||cat==="reorder")?stringifyOptions(options):"",
-      materials: cat==="sample"?stringifyMaterials(materials):"",
+      var finalBrand = (brand==="직접입력") ? (brandCustomInput?brandCustomInput.value:"") : brand;
+      var seasonVal = (cat!=="meeting") ? seasonSel.value : "";
+      var orderVal = "";
+      if(cat==="reorder"){
+        var rawOrder = fields.order ? fields.order.value : "";
+        orderVal = rawOrder ? rawOrder+" / "+seasonVal : seasonVal;
+      } else if(cat==="meeting"){
+        orderVal = "";
+      } else {
+        orderVal = seasonVal;
+      }
+      var payload={
+        id: isEdit?ev.id:undefined,
+        date: dateInput.value,
+        category: cat,
+        brand: finalBrand,
+        stage: fields.stage?fields.stage.value:"",
+        order: orderVal,
+        company: fields.company?fields.company.value:"",
+        item: fields.item?fields.item.value:"",
+        options: (cat==="main"||cat==="reorder")?stringifyOptions(options):"",
+        materials: cat==="sample"?stringifyMaterials(materials):"",
       content: fields.content?fields.content.value:""
     };
     apiPost({action:isEdit?"update":"create",data:payload}).then(function(res){
-      if(res.success===false){ showToast(res.error||"저장 중 오류가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; return; }
-      showToast("저장되었습니다."); refreshAllAndPanel(dateInput.value);
-    }).catch(function(){ showToast("저장 중 오류가 발생했습니다."); saveBtn.disabled=false; saveBtn.textContent="저장"; });
+      if(res.success===false){ showToast(res.error||"저장 중 오류가 발생했습니다."); return; }
+      // 서버에서 발급된 실제 id로 로컬 캐시 보정
+      if(!isEdit && res.id) {
+        for(var i=events.length-1;i>=0;i--){
+          if(events[i].id==="__pending__"){ events[i].id=res.id; break; }
+        }
+      }
+    }).catch(function(){ showToast("저장 중 오류가 발생했습니다."); });
+
+    // 서버 응답 기다리지 않고 로컬에 즉시 반영
+    if(isEdit){
+      localUpdate(payload);
+    } else {
+      payload.id = "__pending__";
+      localCreate(payload, "__pending__");
+    }
+    showToast("저장되었습니다.");
+    render();
+    renderPanelList(dateInput.value);
   });
   rightBtns.appendChild(saveBtn); btnRow.appendChild(rightBtns); panel.appendChild(btnRow);
 }
 
 function refreshAllAndPanel(dateStr){
-  loadEvents().then(function(){ render(); renderPanelList(dateStr); });
+  loadEvents().then(function(){ render(); if(dateStr) renderPanelList(dateStr); });
 }
 
 document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} refreshAll(); });
