@@ -254,8 +254,8 @@ for(var m=1;m<=12;m++){
   if(m-1===view.month) mo.selected=true;
   monthSel.appendChild(mo);
 }
-yearSel.addEventListener("change",function(){ view.year=Number(yearSel.value); refreshAll(); });
-monthSel.addEventListener("change",function(){ view.month=Number(monthSel.value); refreshAll(); });
+yearSel.addEventListener("change",function(){ view.year=Number(yearSel.value); render(); });
+monthSel.addEventListener("change",function(){ view.month=Number(monthSel.value); render(); });
 var weekdayRow = document.getElementById("weekday-row");
 var grid       = document.getElementById("grid");
 var panel      = document.getElementById("panel");
@@ -275,7 +275,19 @@ function dateToTs(ds){ return new Date(ds+"T00:00:00").getTime(); }
 
 function apiGet(){ return fetch(API_URL+"?action=events",{cache:"no-store"}).then(function(r){return r.json();}); }
 function apiPost(body){ return fetch(API_URL,{method:"POST",body:JSON.stringify(body)}).then(function(r){return r.json();}); }
-function loadEvents(){ return apiGet().then(function(d){ events=d.events||[]; }).catch(function(){ showToast("데이터를 불러오지 못했습니다."); }); }
+
+var eventsLoaded = false;
+var loadPromise  = null;
+
+function loadEvents(force){
+  if(!force && eventsLoaded) return Promise.resolve();
+  if(loadPromise) return loadPromise;
+  loadPromise = apiGet()
+    .then(function(d){ events=d.events||[]; eventsLoaded=true; })
+    .catch(function(){ showToast("데이터를 불러오지 못했습니다."); })
+    .finally(function(){ loadPromise=null; });
+  return loadPromise;
+}
 
 function localCreate(data,newId){
   events.push({ id:newId, date:data.date, dateEnd:data.dateEnd||"", category:data.category, brand:data.brand||"", stage:data.stage||"", order:data.order||"", company:data.company||"", item:data.item||"", options:data.options||"", content:data.content||"" });
@@ -459,9 +471,11 @@ function render(){
   }
 }
 
-function refreshAll(){
-  grid.innerHTML='<div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>';
-  loadEvents().then(function(){ render(); if(selectedDate) renderPanelList(selectedDate); });
+function refreshAll(force){
+  if(!eventsLoaded){
+    grid.innerHTML='<div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>';
+  }
+  loadEvents(force).then(function(){ render(); if(selectedDate) renderPanelList(selectedDate); });
 }
 
 /* ---- 사이드 패널: 목록 ---- */
@@ -920,10 +934,10 @@ function switchView(v) {
 
 /* 간트 년도 버튼 */
 document.getElementById("gantt-year-prev").addEventListener("click", function(){
-  view.year--; updateGanttTopbar(); renderGantt(); scrollGanttToMonth(view.month);
+  view.year--; yearSel.value=view.year; updateGanttTopbar(); renderGantt(); scrollGanttToMonth(view.month);
 });
 document.getElementById("gantt-year-next").addEventListener("click", function(){
-  view.year++; updateGanttTopbar(); renderGantt(); scrollGanttToMonth(view.month);
+  view.year++; yearSel.value=view.year; updateGanttTopbar(); renderGantt(); scrollGanttToMonth(view.month);
 });
 
 /* 간트 월 탭 */
@@ -1135,10 +1149,10 @@ function renderGantt() {
   if(todayIdx >= 0) scrollEl.scrollLeft = Math.max(0, todayIdx * COL_W - 200);
 }
 
-document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} refreshAll(); });
-document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} refreshAll(); });
-document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); refreshAll(); });
-document.getElementById("refresh-btn").addEventListener("click",refreshAll);
+document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} render(); if(selectedDate) renderPanelList(selectedDate); });
+document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} render(); if(selectedDate) renderPanelList(selectedDate); });
+document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); render(); if(selectedDate) renderPanelList(selectedDate); });
+document.getElementById("refresh-btn").addEventListener("click",function(){ refreshAll(true); });
 refreshAll();
 </script>
 </body>
