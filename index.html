@@ -1134,9 +1134,11 @@ function renderGantt() {
           switchView("cal");
           view.year  = new Date(capturedEv.date+"T00:00:00").getFullYear();
           view.month = new Date(capturedEv.date+"T00:00:00").getMonth();
-          refreshAll();
+          yearSel.value = view.year;
+          monthSel.value = view.month;
+          render();
           selectedDate = capturedEv.date;
-          setTimeout(function(){ renderPanelList(capturedEv.date); }, 600);
+          renderPanelList(capturedEv.date);
         });
       })(ev);
       brow.appendChild(bar);
