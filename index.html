@@ -240,9 +240,11 @@ function renderMultidayBars(weekRowEl, weekDates, scheduleEvents) {
 
   /* 트랙 배치 (겹침 방지) */
   var tracks = []; /* tracks[i] = 마지막 종료일 ts */
-  relevant.forEach(function(ev, evIdx) {
+  /* colTrackCount[colIdx] = 이 열에 지나가는 최대 트랙 수 */
+  var colTrackCount = [0,0,0,0,0,0,0];
+
+  relevant.forEach(function(ev) {
     var s = ev.date, e = ev.dateEnd || ev.date;
-    /* 이 주 안에서의 시작/끝 col */
     var startCol = -1, endCol = -1;
     weekDates.forEach(function(d, i) {
       if(!d) return;
@@ -262,6 +264,11 @@ function renderMultidayBars(weekRowEl, weekDates, scheduleEvents) {
     if(track===-1){ track=tracks.length; }
     tracks[track] = dateToTs(weekDates[endCol]);
 
+    /* 이 바가 지나가는 열마다 필요한 트랙 수 갱신 */
+    for(var ci=startCol; ci<=endCol; ci++){
+      colTrackCount[ci] = Math.max(colTrackCount[ci], track+1);
+    }
+
     var c = CATS.schedule;
     var bar = document.createElement("div");
     bar.className = "multiday-bar" + (continuesLeft?" continues-left":"") + (continuesRight?" continues-right":"");
@@ -269,14 +276,12 @@ function renderMultidayBars(weekRowEl, weekDates, scheduleEvents) {
     bar.style.color = c.text;
     bar.style.borderLeft = continuesLeft ? "none" : "3px solid "+c.color;
 
-    /* 위치: col 단위 % */
     var colW = 100/7;
-    bar.style.left   = (startCol * colW) + "%";
-    bar.style.width  = ((endCol - startCol + 1) * colW) + "%";
-    bar.style.top    = (track * 26) + "px";
+    bar.style.left  = (startCol * colW) + "%";
+    bar.style.width = ((endCol - startCol + 1) * colW) + "%";
+    bar.style.top   = (track * 26) + "px";
 
-    /* 라벨: 시작 셀에만 텍스트 표시 (continuesLeft면 항상 표시) */
-    var label = (ev.company || "") + (ev.company && ev.item ? "·" : "") + (ev.item || "");
+    var label = (ev.company || "");
     if(!label) label = ev.content || "일정";
     label += "  " + fmtShort(s) + "~" + fmtShort(e);
     bar.textContent = label;
@@ -289,18 +294,17 @@ function renderMultidayBars(weekRowEl, weekDates, scheduleEvents) {
     layer.appendChild(bar);
   });
 
-  /* spacer: 트랙 수만큼 셀 안에 여백 추가 */
-  var trackCount = tracks.length;
-  if(trackCount > 0) {
-    var cells = weekRowEl.querySelectorAll(".cell:not(.outside)");
-    cells.forEach(function(cell) {
-      for(var t=0; t<trackCount; t++){
-        var sp = document.createElement("div"); sp.className="multiday-spacer";
-        /* daynum 다음에 삽입 */
-        cell.insertBefore(sp, cell.children[1] || null);
-      }
-    });
-  }
+  /* spacer: 각 셀별로 실제 지나가는 트랙 수만큼만 삽입 */
+  var cellEls = weekRowEl.querySelectorAll(".cell");
+  var colIdx = 0;
+  cellEls.forEach(function(cell) {
+    var needed = colTrackCount[colIdx] || 0;
+    for(var t=0; t<needed; t++){
+      var sp = document.createElement("div"); sp.className="multiday-spacer";
+      cell.insertBefore(sp, cell.children[1] || null);
+    }
+    colIdx++;
+  });
 
   weekRowEl.appendChild(layer);
 }
