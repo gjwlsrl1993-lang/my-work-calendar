@@ -969,9 +969,25 @@ function renderPanelForm(dateStr,ev){
     var delBtn=document.createElement("button"); delBtn.className="danger"; delBtn.textContent="삭제";
     delBtn.addEventListener("click",function(){
       delBtn.disabled=true; delBtn.textContent="삭제 중...";
-      localDelete(ev.id); render(); renderPanelList(dateStr);
-      showToast("삭제되었습니다.");
-      apiPost({action:"delete",id:ev.id});
+      /* 원본(stage 없음)이면 연결된 예정/완료도 함께 삭제 */
+      var toDelete = [ev.id];
+      if(!ev.stage && (ev.category==="sample"||ev.category==="main"||ev.category==="reorder")){
+        events.forEach(function(e){
+          if(e.category===ev.category &&
+             (e.stage==="expected"||e.stage==="completed") &&
+             e.item===ev.item && e.company===ev.company){
+            toDelete.push(e.id);
+          }
+        });
+      }
+      toDelete.forEach(function(id){ localDelete(id); });
+      render(); renderPanelList(dateStr);
+      showToast("삭제되었습니다"+(toDelete.length>1?" (연결 일정 "+(toDelete.length-1)+"건 포함)":"")+".");
+      if(toDelete.length > 1){
+        apiPost({action:"deleteMultiple", ids: toDelete.map(String)});
+      } else {
+        apiPost({action:"delete", id: toDelete[0]});
+      }
     });
     leftBtns.appendChild(delBtn);
   }
