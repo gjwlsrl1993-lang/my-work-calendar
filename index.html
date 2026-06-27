@@ -27,8 +27,6 @@
     color: var(--color-text);
     padding: 24px 24px;
     min-height: 100vh;
-    display: flex;
-    align-items: center;
   }
   .layout { max-width: 1800px; width: 100%; margin: 0 auto; display: flex; align-items: flex-start; gap: 22px; }
   .main-col { flex: 1; min-width: 0; }
@@ -44,14 +42,14 @@
   button:hover { background: var(--color-bg-tertiary); }
   button.primary { background: var(--color-text); color: #fff; border-color: var(--color-text); }
   button.primary:hover { opacity: 0.85; }
-  .calendar-card { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
-  .weekday-row { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); background: var(--color-bg); border-bottom: 2px solid var(--color-border); }
+  .calendar-card { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; height: 830px; display: flex; flex-direction: column; }
+  .weekday-row { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); background: var(--color-bg); border-bottom: 2px solid var(--color-border); flex-shrink: 0; }
   .weekday-row div { text-align: center; padding: 14px 0; font-size: 15px; font-weight: 700; color: var(--color-text-secondary); }
   .weekday-row div.sun { color: var(--sun-color); }
   .weekday-row div.sat { color: var(--sat-color); }
 
   /* 캘린더 그리드: 주(row) 단위로 묶기 위해 week-row 사용 */
-  .grid { display: flex; flex-direction: column; }
+  .grid { display: flex; flex-direction: column; overflow-y: auto; flex: 1; }
   .week-row { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); position: relative; }
   .cell { min-height: 155px; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); padding: 10px; padding-top: 10px; cursor: pointer; position: relative; }
   .cell.outside { background: var(--color-bg-secondary); cursor: default; }
@@ -273,6 +271,54 @@ function fmtKorean(ds){ var d=new Date(ds+"T00:00:00"),wd=["일","월","화","�
 function showToast(msg){ toastRoot.innerHTML=""; var t=document.createElement("div"); t.className="toast"; t.textContent=msg; toastRoot.appendChild(t); setTimeout(function(){ toastRoot.innerHTML=""; },2500); }
 function dateToTs(ds){ return new Date(ds+"T00:00:00").getTime(); }
 
+var HOLIDAY_API_KEY = "5411f4ec11c7363e7af22d47fbf23ac63695742a7c2ae3598d698f305a531fb0";
+var holidayCache = {}; /* { "YYYY-MM": { "YYYY-MM-DD": "공휴일명" } } */
+
+function fetchHolidays(year, month) {
+  var key = year + "-" + String(month+1).padStart(2,"0");
+  if(holidayCache[key]) return Promise.resolve();
+  var url = "https://apis.data.go.kr/B090041/openapi/service/SpcdeInfoService/getRestDeInfo"
+    + "?serviceKey=" + encodeURIComponent(HOLIDAY_API_KEY)
+    + "&solYear=" + year
+    + "&solMonth=" + String(month+1).padStart(2,"0")
+    + "&_type=json&numOfRows=20";
+  return fetch(url)
+    .then(function(r){ return r.json(); })
+    .then(function(data){
+      holidayCache[key] = {};
+      var items = data && data.response && data.response.body && data.response.body.items;
+      if(!items) return;
+      var list = items.item;
+      if(!list) return;
+      if(!Array.isArray(list)) list = [list];
+      list.forEach(function(item){
+        var ds = String(item.locdate);
+        var dateStr = ds.slice(0,4)+"-"+ds.slice(4,6)+"-"+ds.slice(6,8);
+        holidayCache[key][dateStr] = item.dateName;
+      });
+    })
+    .catch(function(){ holidayCache[key] = {}; });
+}
+
+function getHolidayName(dateStr) {
+  var d = new Date(dateStr+"T00:00:00");
+  var key = d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0");
+  return (holidayCache[key] && holidayCache[key][dateStr]) || "";
+}
+
+function loadHolidaysForView() {
+  /* 현재 월 + 전월 + 다음월 미리 로드 */
+  var months = [
+    {y: view.year, m: view.month - 1},
+    {y: view.year, m: view.month},
+    {y: view.year, m: view.month + 1}
+  ].map(function(x){
+    var d = new Date(x.y, x.m, 1);
+    return {y: d.getFullYear(), m: d.getMonth()};
+  });
+  return Promise.all(months.map(function(x){ return fetchHolidays(x.y, x.m); }));
+}
+
 function apiGet(){ return fetch(API_URL+"?action=events",{cache:"no-store"}).then(function(r){return r.json();}); }
 function apiPost(body){ return fetch(API_URL,{method:"POST",body:JSON.stringify(body)}).then(function(r){return r.json();}); }
 
@@ -400,7 +446,64 @@ function renderMultidayBars(weekRowEl, weekDates, scheduleEvents) {
 /* ---- 캘린더 렌더 ---- */
 function buildCell(dateStr, dayNum, isOutside, clickCb) {
   var cell = document.createElement("div"); cell.className = "cell";
-  if(isOutside){ cell.className += " outside"; return cell; }
+  if(isOutside){
+    cell.className += " outside";
+    if(dateStr){
+      cell.style.opacity = "0.6";
+      var d = new Date(dateStr+"T00:00:00"), dow = d.getDay();
+      var num = document.createElement("div");
+      num.textContent = dayNum;
+      num.className = "daynum"+(dow===0?" sun":(dow===6?" sat":""));
+      cell.appendChild(num);
+      /* 공휴일 표시 */
+      var holidayNameO = getHolidayName(dateStr);
+      if(holidayNameO){
+        var hElO = document.createElement("div");
+        hElO.textContent = holidayNameO;
+        hElO.style.cssText = "font-size:9px;color:#d14343;font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+        cell.appendChild(hElO);
+        if(dow !== 0) num.style.color = "#d14343";
+      }
+      /* outside 셀 일정 카드 */
+      events.filter(function(e){ return e.date===dateStr && e.category!=="schedule"; }).forEach(function(ev){
+        var c = CATS[ev.category]||CATS.meeting;
+        var card = document.createElement("div"); card.className = "event-card";
+        card.style.background = c.bg; card.style.color = c.text;
+        if(ev.category==="meeting"){
+          var strong=document.createElement("strong"); strong.textContent=ev.company||"";
+          card.appendChild(strong);
+          if(ev.stage) card.appendChild(document.createTextNode(" · "+ev.stage));
+        } else {
+          var parts=[];
+          if(ev.brand) parts.push("["+ev.brand+"]");
+          if(ev.order){
+            if(ev.category==="reorder"&&ev.order.indexOf(" / ")>-1){ parts.push(ev.order.split(" / ").pop().trim()); }
+            else { parts.push(ev.order); }
+          }
+          if(ev.stage==="expected") parts.push("예정");
+          else if(ev.stage==="completed") parts.push("완료");
+          if(ev.company) parts.push(ev.company);
+          if(ev.item) parts.push(ev.item);
+          card.textContent = parts.join(" · ");
+        }
+        cell.appendChild(card);
+      });
+      cell.addEventListener("click", function(){
+        var prev=document.querySelector(".cell.selected");
+        if(prev) prev.classList.remove("selected");
+        cell.classList.add("selected");
+        selectedDate = dateStr;
+        /* outside 날짜 클릭 시 해당 월로 이동 */
+        view.year = d.getFullYear();
+        view.month = d.getMonth();
+        yearSel.value = view.year;
+        monthSel.value = view.month;
+        render();
+        renderPanelList(dateStr);
+      });
+    }
+    return cell;
+  }
   var isToday = dateStr === fmt(today.getFullYear(), today.getMonth(), today.getDate());
   var d = new Date(dateStr+"T00:00:00"), dow = d.getDay();
   if(isToday) cell.className += " today";
@@ -410,6 +513,17 @@ function buildCell(dateStr, dayNum, isOutside, clickCb) {
   num.textContent = dayNum;
   num.className = "daynum"+(isToday?" today":(dow===0?" sun":(dow===6?" sat":"")));
   cell.appendChild(num);
+
+  /* 공휴일 표시 */
+  var holidayName = getHolidayName(dateStr);
+  if(holidayName){
+    var hEl = document.createElement("div");
+    hEl.textContent = holidayName;
+    hEl.style.cssText = "font-size:9px;color:#d14343;font-weight:600;margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+    cell.appendChild(hEl);
+    /* 공휴일은 날짜도 빨간색으로 */
+    if(dow !== 0) num.style.color = "#d14343";
+  }
 
   /* schedule 외 이벤트만 카드로 표시 */
   events.filter(function(e){ return e.date===dateStr && e.category!=="schedule"; }).forEach(function(ev){
@@ -462,9 +576,16 @@ function render(){
     for(var i=0;i<7;i++){
       var dn = rowStart+i-firstDay+1;
       var isOutside = (dn<1||dn>daysInMonth);
-      var dateStr = isOutside ? null : fmt(view.year, view.month, dn);
-      weekDates.push(dateStr);
-      weekRowEl.appendChild(buildCell(dateStr, isOutside?null:dn, isOutside));
+      var cellDate;
+      if(isOutside){
+        var d2 = new Date(view.year, view.month, dn);
+        cellDate = fmt(d2.getFullYear(), d2.getMonth(), d2.getDate());
+      } else {
+        cellDate = fmt(view.year, view.month, dn);
+      }
+      var displayDay = new Date(cellDate+"T00:00:00").getDate();
+      weekDates.push(isOutside ? null : cellDate);
+      weekRowEl.appendChild(buildCell(cellDate, displayDay, isOutside));
     }
     renderMultidayBars(weekRowEl, weekDates, scheduleEvs);
     grid.appendChild(weekRowEl);
@@ -475,7 +596,8 @@ function refreshAll(force){
   if(!eventsLoaded){
     grid.innerHTML='<div class="loading-text"><span class="spinner-inline"></span>일정을 불러오는 중...</div>';
   }
-  loadEvents(force).then(function(){ render(); if(selectedDate) renderPanelList(selectedDate); });
+  Promise.all([loadEvents(force), loadHolidaysForView()])
+    .then(function(){ render(); if(selectedDate) renderPanelList(selectedDate); });
 }
 
 /* ---- 사이드 패널: 목록 ---- */
@@ -1151,9 +1273,9 @@ function renderGantt() {
   if(todayIdx >= 0) scrollEl.scrollLeft = Math.max(0, todayIdx * COL_W - 200);
 }
 
-document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} render(); if(selectedDate) renderPanelList(selectedDate); });
-document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} render(); if(selectedDate) renderPanelList(selectedDate); });
-document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); render(); if(selectedDate) renderPanelList(selectedDate); });
+document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} loadHolidaysForView().then(function(){ render(); if(selectedDate) renderPanelList(selectedDate); }); });
+document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} loadHolidaysForView().then(function(){ render(); if(selectedDate) renderPanelList(selectedDate); }); });
+document.getElementById("today-btn").addEventListener("click",function(){ view.year=today.getFullYear(); view.month=today.getMonth(); loadHolidaysForView().then(function(){ render(); if(selectedDate) renderPanelList(selectedDate); }); });
 document.getElementById("refresh-btn").addEventListener("click",function(){ refreshAll(true); });
 refreshAll();
 </script>
