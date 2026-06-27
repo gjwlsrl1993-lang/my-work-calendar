@@ -49,8 +49,11 @@
   .weekday-row div { text-align: center; padding: 14px 0; font-size: 15px; font-weight: 700; color: var(--color-text-secondary); }
   .weekday-row div.sun { color: var(--sun-color); }
   .weekday-row div.sat { color: var(--sat-color); }
-  .grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); }
-  .cell { min-height: 155px; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); padding: 10px; cursor: pointer; position: relative; }
+
+  /* 캘린더 그리드: 주(row) 단위로 묶기 위해 week-row 사용 */
+  .grid { display: flex; flex-direction: column; }
+  .week-row { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); position: relative; }
+  .cell { min-height: 155px; border-right: 1px solid var(--color-border); border-bottom: 1px solid var(--color-border); padding: 10px; padding-top: 10px; cursor: pointer; position: relative; }
   .cell.outside { background: var(--color-bg-secondary); cursor: default; }
   .cell.today { background: var(--color-bg); box-shadow: inset 0 0 0 2px #1a1a18; }
   .cell.selected { box-shadow: inset 0 0 0 2px #6ab04c; }
@@ -59,6 +62,15 @@
   .daynum.sun { color: var(--sun-color); }
   .daynum.sat { color: var(--sat-color); }
   .event-card { border-radius: 5px; margin-bottom: 4px; padding: 4px 8px; cursor: pointer; font-size: 11px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* 멀티데이 바 (일정 카테고리) */
+  .multiday-layer { position: absolute; left: 0; right: 0; top: 38px; pointer-events: none; }
+  .multiday-bar { position: absolute; height: 20px; border-radius: 4px; font-size: 11px; font-weight: 500; display: flex; align-items: center; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; pointer-events: auto; z-index: 2; }
+  .multiday-bar.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; padding-left: 4px; }
+  .multiday-bar.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 4px; }
+  /* 셀 내 일정 바를 위한 spacer */
+  .multiday-spacer { height: 24px; margin-bottom: 2px; }
+
   .panel { background: var(--color-bg); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 18px; max-height: calc(100vh - 96px); overflow-y: auto; }
   .panel-empty { font-size: 13px; color: var(--color-text-tertiary); text-align: center; padding: 40px 10px; }
   .panel-date { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
@@ -83,8 +95,6 @@
   .field input, .field textarea, .field select { width: 100%; padding: 7px 9px; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-size: 13px; font-family: inherit; background: var(--color-bg); color: var(--color-text); }
   .field textarea { resize: vertical; }
   .section-label { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--color-border); }
-  .mat-row { display: grid; grid-template-columns: 1fr 1fr 0.8fr 0.8fr 0.8fr 26px; gap: 5px; margin-bottom: 6px; align-items: center; }
-  .mat-row input { padding: 6px; font-size: 12px; min-width: 0; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-family: inherit; background: var(--color-bg); }
   .opt-row { display: grid; grid-template-columns: 1fr 1fr 1fr 26px; gap: 5px; margin-bottom: 6px; align-items: center; }
   .opt-row input { padding: 6px; font-size: 12px; min-width: 0; width: 100%; border: 1px solid var(--color-border); border-radius: var(--radius-md); font-family: inherit; background: var(--color-bg); }
   .row-header { display: grid; gap: 5px; margin-bottom: 4px; }
@@ -115,10 +125,11 @@
         </div>
         <div class="topbar-right">
           <div class="legend">
-            <div class="legend-item"><span class="dot" style="background:#4A90D9;"></span>샘플</div>
-            <div class="legend-item"><span class="dot" style="background:#E24B4A;"></span>메인</div>
-            <div class="legend-item"><span class="dot" style="background:#9B59B6;"></span>리오더</div>
-            <div class="legend-item"><span class="dot" style="background:#27AE60;"></span>미팅</div>
+            <div class="legend-item"><span class="dot" style="background:#1A7FE8;"></span>샘플</div>
+            <div class="legend-item"><span class="dot" style="background:#F01E1E;"></span>메인</div>
+            <div class="legend-item"><span class="dot" style="background:#A020D0;"></span>리오더</div>
+            <div class="legend-item"><span class="dot" style="background:#0DBF50;"></span>미팅</div>
+            <div class="legend-item"><span class="dot" style="background:#F59500;"></span>일정</div>
           </div>
           <button id="prev-btn">&#9666;</button>
           <button id="today-btn">오늘</button>
@@ -142,10 +153,11 @@
 var API_URL = "https://script.google.com/macros/s/AKfycbxzCVdZjXPCvhQ_TfRdwbVMb6Vo-9jhdMm4vGl7L-nZuQTtZwhmFy6cTXMKlTlnblgn/exec";
 
 var CATS = {
-  sample:  { label: "샘플",  color: "#4A90D9", bg: "#EAF3FB", text: "#1A5A96" },
-  main:    { label: "메인",  color: "#E24B4A", bg: "#FCEBEB", text: "#7A1F1F" },
-  reorder: { label: "리오더", color: "#9B59B6", bg: "#F4EBF9", text: "#5C2E78" },
-  meeting: { label: "미팅",  color: "#27AE60", bg: "#E8F8EE", text: "#145C32" }
+  sample:  { label: "샘플",  color: "#3B8FE0", bg: "#3B8FE0", text: "#ffffff" },
+  main:    { label: "메인",  color: "#E03B3B", bg: "#E03B3B", text: "#ffffff" },
+  reorder: { label: "리오더", color: "#9040C0", bg: "#9040C0", text: "#ffffff" },
+  meeting: { label: "미팅",  color: "#2EAF5C", bg: "#2EAF5C", text: "#ffffff" },
+  schedule:{ label: "일정",  color: "#E89820", bg: "#E89820", text: "#ffffff" }
 };
 var BRANDS = ["엔오디", "헤오진", "직접입력"];
 
@@ -157,13 +169,11 @@ var selectedDate = null;
 var yearSel  = document.getElementById("year-sel");
 var monthSel = document.getElementById("month-sel");
 
-/* 년도 옵션: 2024~2030 */
 for(var y=2024;y<=2030;y++){
   var yo=document.createElement("option"); yo.value=y; yo.textContent=y+"년";
   if(y===view.year) yo.selected=true;
   yearSel.appendChild(yo);
 }
-/* 월 옵션: 1~12 */
 for(var m=1;m<=12;m++){
   var mo=document.createElement("option"); mo.value=m-1; mo.textContent=m+"월";
   if(m-1===view.month) mo.selected=true;
@@ -183,20 +193,22 @@ var toastRoot  = document.getElementById("toast-root");
 });
 
 function fmt(y,m,d){ return y+"-"+String(m+1).padStart(2,"0")+"-"+String(d).padStart(2,"0"); }
+function fmtShort(ds){ var d=new Date(ds+"T00:00:00"); return (d.getMonth()+1)+"."+String(d.getDate()).padStart(2,"0"); }
 function fmtKorean(ds){ var d=new Date(ds+"T00:00:00"),wd=["일","월","화","수","목","금","토"][d.getDay()]; return (d.getMonth()+1)+"월 "+d.getDate()+"일 ("+wd+")"; }
 function showToast(msg){ toastRoot.innerHTML=""; var t=document.createElement("div"); t.className="toast"; t.textContent=msg; toastRoot.appendChild(t); setTimeout(function(){ toastRoot.innerHTML=""; },2500); }
+function dateToTs(ds){ return new Date(ds+"T00:00:00").getTime(); }
 
 function apiGet(){ return fetch(API_URL+"?action=events",{cache:"no-store"}).then(function(r){return r.json();}); }
 function apiPost(body){ return fetch(API_URL,{method:"POST",body:JSON.stringify(body)}).then(function(r){return r.json();}); }
 function loadEvents(){ return apiGet().then(function(d){ events=d.events||[]; }).catch(function(){ showToast("데이터를 불러오지 못했습니다."); }); }
 
 function localCreate(data,newId){
-  events.push({ id:newId, date:data.date, category:data.category, brand:data.brand||"", stage:data.stage||"", order:data.order||"", company:data.company||"", item:data.item||"", options:data.options||"", materials:data.materials||"", content:data.content||"" });
+  events.push({ id:newId, date:data.date, dateEnd:data.dateEnd||"", category:data.category, brand:data.brand||"", stage:data.stage||"", order:data.order||"", company:data.company||"", item:data.item||"", options:data.options||"", content:data.content||"" });
 }
 function localUpdate(data){
   for(var i=0;i<events.length;i++){
     if(String(events[i].id)===String(data.id)){
-      events[i]={ id:data.id, date:data.date, category:data.category, brand:data.brand||"", stage:data.stage||"", order:data.order||"", company:data.company||"", item:data.item||"", options:data.options||"", materials:data.materials||"", content:data.content||"" };
+      events[i]={ id:data.id, date:data.date, dateEnd:data.dateEnd||"", category:data.category, brand:data.brand||"", stage:data.stage||"", order:data.order||"", company:data.company||"", item:data.item||"", options:data.options||"", content:data.content||"" };
       break;
     }
   }
@@ -208,57 +220,136 @@ function parseOptions(str){
   return str.split(";").map(function(p){ var b=p.trim().split("/"); return {color:b[0]||"",size:b[1]||"",qty:b[2]||""}; });
 }
 function stringifyOptions(arr){ return arr.filter(function(v){return v.color||v.size||v.qty;}).map(function(v){return [v.color,v.size,v.qty].join("/");}).join("; "); }
-function parseMaterials(str){
-  if(!str) return [{co:"",item:"",color:"",usage:"",price:""}];
-  return str.split("|").map(function(p){ var b=p.trim().split("/"); return {co:b[0]||"",item:b[1]||"",color:b[2]||"",usage:b[3]||"",price:b[4]||""}; });
+
+/* ---- 멀티데이 바 렌더링 ---- */
+/* 일정(schedule) 이벤트를 주(week) 단위로 잘라서 각 week-row에 absolute bar로 그린다 */
+function renderMultidayBars(weekRowEl, weekDates, scheduleEvents) {
+  /* weekDates: ["2026-07-13", ..., "2026-07-19"] (7개, null이면 outside) */
+  var layer = document.createElement("div");
+  layer.className = "multiday-layer";
+
+  /* 이 주에 걸치는 일정들 */
+  var relevant = scheduleEvents.filter(function(ev) {
+    var s = ev.date, e = ev.dateEnd || ev.date;
+    /* 이 주의 유효 날짜 범위 */
+    var validDates = weekDates.filter(Boolean);
+    if(!validDates.length) return false;
+    var weekStart = validDates[0], weekEnd = validDates[validDates.length-1];
+    return dateToTs(e) >= dateToTs(weekStart) && dateToTs(s) <= dateToTs(weekEnd);
+  });
+
+  /* 트랙 배치 (겹침 방지) */
+  var tracks = []; /* tracks[i] = 마지막 종료일 ts */
+  relevant.forEach(function(ev, evIdx) {
+    var s = ev.date, e = ev.dateEnd || ev.date;
+    /* 이 주 안에서의 시작/끝 col */
+    var startCol = -1, endCol = -1;
+    weekDates.forEach(function(d, i) {
+      if(!d) return;
+      if(startCol===-1 && dateToTs(d) >= dateToTs(s)) startCol = i;
+      if(dateToTs(d) <= dateToTs(e)) endCol = i;
+    });
+    if(startCol===-1 || endCol===-1) return;
+
+    var continuesLeft  = dateToTs(s) < dateToTs(weekDates.filter(Boolean)[0]);
+    var continuesRight = dateToTs(e) > dateToTs(weekDates.filter(Boolean)[weekDates.filter(Boolean).length-1]);
+
+    /* 트랙 찾기 */
+    var track = -1;
+    for(var t=0; t<tracks.length; t++){
+      if(!tracks[t] || tracks[t] < dateToTs(weekDates[startCol])) { track=t; break; }
+    }
+    if(track===-1){ track=tracks.length; }
+    tracks[track] = dateToTs(weekDates[endCol]);
+
+    var c = CATS.schedule;
+    var bar = document.createElement("div");
+    bar.className = "multiday-bar" + (continuesLeft?" continues-left":"") + (continuesRight?" continues-right":"");
+    bar.style.background = c.bg;
+    bar.style.color = c.text;
+    bar.style.borderLeft = continuesLeft ? "none" : "3px solid "+c.color;
+
+    /* 위치: col 단위 % */
+    var colW = 100/7;
+    bar.style.left   = (startCol * colW) + "%";
+    bar.style.width  = ((endCol - startCol + 1) * colW) + "%";
+    bar.style.top    = (track * 26) + "px";
+
+    /* 라벨: 시작 셀에만 텍스트 표시 (continuesLeft면 항상 표시) */
+    var label = (ev.company || "") + (ev.company && ev.item ? "·" : "") + (ev.item || "");
+    if(!label) label = ev.content || "일정";
+    label += "  " + fmtShort(s) + "~" + fmtShort(e);
+    bar.textContent = label;
+
+    bar.addEventListener("click", function(e2) {
+      e2.stopPropagation();
+      renderPanelForm(ev.date, ev);
+    });
+
+    layer.appendChild(bar);
+  });
+
+  /* spacer: 트랙 수만큼 셀 안에 여백 추가 */
+  var trackCount = tracks.length;
+  if(trackCount > 0) {
+    var cells = weekRowEl.querySelectorAll(".cell:not(.outside)");
+    cells.forEach(function(cell) {
+      for(var t=0; t<trackCount; t++){
+        var sp = document.createElement("div"); sp.className="multiday-spacer";
+        /* daynum 다음에 삽입 */
+        cell.insertBefore(sp, cell.children[1] || null);
+      }
+    });
+  }
+
+  weekRowEl.appendChild(layer);
 }
-function stringifyMaterials(arr){ return arr.filter(function(v){return v.co||v.item||v.color||v.usage||v.price;}).map(function(v){return [v.co,v.item,v.color,v.usage,v.price].join("/");}).join("|"); }
 
 /* ---- 캘린더 렌더 ---- */
-function buildCell(dateStr,dayNum,isOutside){
-  var cell=document.createElement("div"); cell.className="cell";
-  if(isOutside){ cell.className+=" outside"; return cell; }
-  var isToday=dateStr===fmt(today.getFullYear(),today.getMonth(),today.getDate());
-  var d=new Date(dateStr+"T00:00:00"),dow=d.getDay();
-  if(isToday) cell.className+=" today";
-  if(selectedDate===dateStr) cell.className+=" selected";
-  var num=document.createElement("div");
-  num.textContent=dayNum;
-  num.className="daynum"+(isToday?" today":(dow===0?" sun":(dow===6?" sat":"")));
+function buildCell(dateStr, dayNum, isOutside, clickCb) {
+  var cell = document.createElement("div"); cell.className = "cell";
+  if(isOutside){ cell.className += " outside"; return cell; }
+  var isToday = dateStr === fmt(today.getFullYear(), today.getMonth(), today.getDate());
+  var d = new Date(dateStr+"T00:00:00"), dow = d.getDay();
+  if(isToday) cell.className += " today";
+  if(selectedDate === dateStr) cell.className += " selected";
+
+  var num = document.createElement("div");
+  num.textContent = dayNum;
+  num.className = "daynum"+(isToday?" today":(dow===0?" sun":(dow===6?" sat":"")));
   cell.appendChild(num);
 
-  events.filter(function(e){return e.date===dateStr;}).forEach(function(ev){
-    var c=CATS[ev.category]||CATS.meeting;
-    var card=document.createElement("div"); card.className="event-card";
-    card.style.background=c.bg; card.style.color=c.text;
+  /* schedule 외 이벤트만 카드로 표시 */
+  events.filter(function(e){ return e.date===dateStr && e.category!=="schedule"; }).forEach(function(ev){
+    var c = CATS[ev.category]||CATS.meeting;
+    var card = document.createElement("div"); card.className = "event-card";
+    card.style.background = c.bg; card.style.color = c.text;
     if(ev.category==="meeting"){
       var strong=document.createElement("strong"); strong.textContent=ev.company||"";
       card.appendChild(strong);
       if(ev.stage) card.appendChild(document.createTextNode(" · "+ev.stage));
     } else {
-      var parts = [];
+      var parts=[];
       if(ev.brand) parts.push("["+ev.brand+"]");
       if(ev.order){
-        if(ev.category==="reorder" && ev.order.indexOf(" / ")>-1){
-          parts.push(ev.order.split(" / ").pop().trim());
-        } else {
-          parts.push(ev.order);
-        }
+        if(ev.category==="reorder"&&ev.order.indexOf(" / ")>-1){ parts.push(ev.order.split(" / ").pop().trim()); }
+        else { parts.push(ev.order); }
       }
       if(ev.stage==="expected") parts.push("예정");
       else if(ev.stage==="completed") parts.push("완료");
       if(ev.company) parts.push(ev.company);
       if(ev.item) parts.push(ev.item);
-      card.textContent=parts.join(" · ");
+      card.textContent = parts.join(" · ");
     }
+    card.addEventListener("click", function(e2){ e2.stopPropagation(); renderPanelForm(dateStr, ev); });
     cell.appendChild(card);
   });
 
-  cell.addEventListener("click",function(){
+  cell.addEventListener("click", function(){
     var prev=document.querySelector(".cell.selected");
     if(prev) prev.classList.remove("selected");
     cell.classList.add("selected");
-    selectedDate=dateStr;
+    selectedDate = dateStr;
     renderPanelList(dateStr);
   });
   return cell;
@@ -270,10 +361,21 @@ function render(){
   var firstDay=new Date(view.year,view.month,1).getDay();
   var daysInMonth=new Date(view.year,view.month+1,0).getDate();
   var total=Math.ceil((firstDay+daysInMonth)/7)*7;
-  for(var i=0;i<total;i++){
-    var dn=i-firstDay+1;
-    if(dn<1||dn>daysInMonth){ grid.appendChild(buildCell(null,null,true)); continue; }
-    grid.appendChild(buildCell(fmt(view.year,view.month,dn),dn,false));
+
+  var scheduleEvs = events.filter(function(e){ return e.category==="schedule"; });
+
+  for(var rowStart=0; rowStart<total; rowStart+=7){
+    var weekRowEl = document.createElement("div"); weekRowEl.className="week-row";
+    var weekDates = [];
+    for(var i=0;i<7;i++){
+      var dn = rowStart+i-firstDay+1;
+      var isOutside = (dn<1||dn>daysInMonth);
+      var dateStr = isOutside ? null : fmt(view.year, view.month, dn);
+      weekDates.push(dateStr);
+      weekRowEl.appendChild(buildCell(dateStr, isOutside?null:dn, isOutside));
+    }
+    renderMultidayBars(weekRowEl, weekDates, scheduleEvs);
+    grid.appendChild(weekRowEl);
   }
 }
 
@@ -286,7 +388,16 @@ function refreshAll(){
 function renderPanelList(dateStr){
   selectedDate=dateStr; panel.innerHTML="";
   var dateEl=document.createElement("div"); dateEl.className="panel-date"; dateEl.textContent=fmtKorean(dateStr); panel.appendChild(dateEl);
-  var dayEv=events.filter(function(e){return e.date===dateStr;});
+
+  /* 이 날에 해당하는 이벤트: 일반은 date 매칭, 일정은 시작~종료 범위 */
+  var dayEv=events.filter(function(e){
+    if(e.category==="schedule"){
+      var s=e.date, en=e.dateEnd||e.date;
+      return dateToTs(dateStr)>=dateToTs(s) && dateToTs(dateStr)<=dateToTs(en);
+    }
+    return e.date===dateStr;
+  });
+
   var sub=document.createElement("div"); sub.className="panel-subtitle";
   sub.textContent=dayEv.length>0?"일정 "+dayEv.length+"건":"등록된 일정이 없습니다"; panel.appendChild(sub);
   var addBtn=document.createElement("button"); addBtn.className="primary panel-add-btn"; addBtn.textContent="+ 새 일정 추가";
@@ -299,23 +410,30 @@ function renderPanelList(dateStr){
 
     var catEl=document.createElement("div"); catEl.className="panel-list-cat"; catEl.style.color=c.text;
     var catText=c.label;
-    if(ev.stage==="expected") catText+=" · 예정";
-    else if(ev.stage==="completed") catText+=" · 완료";
-    if(ev.order){
-      if(ev.category==="reorder"&&ev.order.indexOf(" / ")>-1){
-        var parts=ev.order.split(" / "); catText+=" · "+parts[0].trim()+"차 · "+parts[1].trim();
-      } else if(ev.category==="reorder"){ catText+=" · "+ev.order+"차";
-      } else if(ev.category!=="meeting"){ catText+=" · "+ev.order; }
+    if(ev.category==="schedule"){
+      catText += " · " + fmtShort(ev.date) + " ~ " + fmtShort(ev.dateEnd||ev.date);
+    } else {
+      if(ev.stage==="expected") catText+=" · 예정";
+      else if(ev.stage==="completed") catText+=" · 완료";
+      if(ev.order){
+        if(ev.category==="reorder"&&ev.order.indexOf(" / ")>-1){
+          var parts=ev.order.split(" / "); catText+=" · "+parts[0].trim()+"차 · "+parts[1].trim();
+        } else if(ev.category==="reorder"){ catText+=" · "+ev.order+"차";
+        } else if(ev.category!=="meeting"){ catText+=" · "+ev.order; }
+      }
     }
     catEl.textContent=catText; item.appendChild(catEl);
 
-    if(ev.brand&&ev.category!=="meeting"){
+    if(ev.brand&&ev.category!=="meeting"&&ev.category!=="schedule"){
       var brandEl=document.createElement("div"); brandEl.className="panel-list-brand"; brandEl.textContent=ev.brand; item.appendChild(brandEl);
     }
 
     var mainEl=document.createElement("div"); mainEl.className="panel-list-main";
-    if(ev.category==="meeting"){ mainEl.textContent=(ev.company||"")+(ev.content?" — "+ev.content.slice(0,20):"");
-    } else { mainEl.textContent=(ev.item||"")+(ev.company?" ("+ev.company+")":""); }
+    if(ev.category==="meeting"||ev.category==="schedule"){
+      mainEl.textContent=(ev.company||"")+(ev.content?" — "+ev.content.slice(0,30):"");
+    } else {
+      mainEl.textContent=(ev.item||"")+(ev.company?" ("+ev.company+")":"");
+    }
     item.appendChild(mainEl);
 
     if((ev.category==="main"||ev.category==="reorder")&&ev.options){
@@ -326,18 +444,10 @@ function renderPanelList(dateStr){
         item.appendChild(sub2);
       }
     }
-    if(ev.category==="sample"&&ev.materials){
-      var mats=parseMaterials(ev.materials).filter(function(v){return v.co||v.item;});
-      if(mats.length>0){
-        var sub3=document.createElement("div"); sub3.className="panel-list-sub";
-        sub3.textContent="원부자재 "+mats.length+"건: "+mats.map(function(m){return m.item||m.co;}).join(", ");
-        item.appendChild(sub3);
-      }
-    }
 
-    item.addEventListener("click",function(){ renderPanelForm(dateStr,ev); }); panel.appendChild(item);
+    item.addEventListener("click",function(){ renderPanelForm(ev.date, ev); }); panel.appendChild(item);
 
-    /* 원본 일정(stage 없음) → 입고 예정일 설정 섹션 */
+    /* 입고 예정/완료 섹션 (일정 카테고리 제외) */
     var isOrigin = !ev.stage;
     if((ev.category==="sample"||ev.category==="main"||ev.category==="reorder") && isOrigin){
       var linkedExp=events.find(function(e){ return e.category===ev.category&&e.stage==="expected"&&e.item===ev.item&&e.company===ev.company; });
@@ -363,7 +473,7 @@ function renderPanelList(dateStr){
           eb.addEventListener("click",function(e){
             e.stopPropagation();
             if(!capturedEi.value){ showToast("날짜를 선택해주세요."); return; }
-            var p={ date:capturedEi.value, category:capturedEv.category, brand:capturedEv.brand||"", stage:"expected", order:capturedEv.order||"", company:capturedEv.company||"", item:capturedEv.item||"", options:capturedEv.options||"", materials:"", content:"" };
+            var p={ date:capturedEi.value, dateEnd:"", category:capturedEv.category, brand:capturedEv.brand||"", stage:"expected", order:capturedEv.order||"", company:capturedEv.company||"", item:capturedEv.item||"", options:capturedEv.options||"", content:"" };
             localCreate(p,"__exp__");
             showToast("입고 예정 일정이 생성되었습니다."); render(); renderPanelList(dateStr);
             apiPost({action:"create",data:p}).then(function(res){ if(res&&res.id){ for(var i=events.length-1;i>=0;i--){ if(events[i].id==="__exp__"){ events[i].id=res.id; break; } } } });
@@ -374,9 +484,7 @@ function renderPanelList(dateStr){
       panel.appendChild(sec);
     }
 
-    /* 예정 일정 → 지연 + 완료 처리 섹션 */
     if((ev.category==="sample"||ev.category==="main"||ev.category==="reorder") && ev.stage==="expected"){
-      /* 입고 지연 */
       var delaySec=document.createElement("div");
       delaySec.style.cssText="background:#fff8ec;border:1px solid #f0d9a0;border-radius:8px;padding:10px 12px;margin-top:-4px;margin-bottom:6px;";
       var delayLbl=document.createElement("div"); delayLbl.style.cssText="font-size:11px;color:#9a6800;margin-bottom:6px;font-weight:500;";
@@ -398,7 +506,6 @@ function renderPanelList(dateStr){
       })(ev,delayIn);
       delayRow.appendChild(delayBtn); delaySec.appendChild(delayRow); panel.appendChild(delaySec);
 
-      /* 입고 완료 처리 */
       var doneSec=document.createElement("div");
       doneSec.style.cssText="background:#f4f6f9;border:1px solid #dce1ea;border-radius:8px;padding:10px 12px;margin-bottom:8px;";
       var doneLbl=document.createElement("div"); doneLbl.style.cssText="font-size:11px;color:#6b6a64;margin-bottom:6px;font-weight:500;";
@@ -429,7 +536,6 @@ function renderPanelForm(dateStr,ev){
   var cat=isEdit?ev.category:"sample";
   var brand=isEdit?ev.brand:"엔오디";
   var options=isEdit&&ev.options?parseOptions(ev.options):[{color:"",size:"",qty:""}];
-  var materials=isEdit&&ev.materials?parseMaterials(ev.materials):[{co:"",item:"",color:"",usage:"",price:""}];
 
   panel.innerHTML="";
   var backBtn=document.createElement("button"); backBtn.className="panel-back-btn"; backBtn.textContent="← 목록으로";
@@ -446,9 +552,14 @@ function renderPanelForm(dateStr,ev){
     paint();
     b.addEventListener("click",function(){
       cat=key;
-      Array.prototype.forEach.call(catRow.children,function(btn){ var k=btn.dataset.cat; var sel=k===cat; btn.style.borderColor=sel?CATS[k].color:""; btn.style.background=sel?CATS[k].bg:""; btn.style.color=sel?CATS[k].text:""; });
-      brandSection.style.display=cat==="meeting"?"none":"";
-      seasonField.style.display=cat==="meeting"?"none":"";
+      Array.prototype.forEach.call(catRow.children,function(btn){
+        var k=btn.dataset.cat; var sel=k===cat;
+        btn.style.borderColor=sel?CATS[k].color:""; btn.style.background=sel?CATS[k].bg:""; btn.style.color=sel?CATS[k].text:"";
+      });
+      brandSection.style.display=(cat==="meeting"||cat==="schedule")?"none":"";
+      dateSeasonRow.style.display=cat==="schedule"?"none":"";
+      dateRangeRow.style.display=cat==="schedule"?"flex":"none";
+      seasonField.style.display=(cat==="meeting"||cat==="schedule")?"none":"";
       renderFormArea();
     });
     catRow.appendChild(b);
@@ -478,15 +589,17 @@ function renderPanelForm(dateStr,ev){
   brandCustomInput.addEventListener("input",function(){ brand=brandCustomInput.value; });
   brandSection.appendChild(brandCustomInput);
   panel.appendChild(brandSection);
-  if(cat==="meeting") brandSection.style.display="none";
+  if(cat==="meeting"||cat==="schedule") brandSection.style.display="none";
 
-  /* 날짜 + 시즌 */
+  /* 날짜 + 시즌 행 */
   var dateSeasonRow=document.createElement("div");
   dateSeasonRow.style.cssText="display:flex;gap:8px;margin-bottom:10px;align-items:flex-end;";
-  var dateField=document.createElement("div"); dateField.style.cssText="flex:1;";
-  var dateLbl=document.createElement("div"); dateLbl.className="field-label"; dateLbl.textContent="날짜"; dateField.appendChild(dateLbl);
+
+  var dateSection=document.createElement("div"); dateSection.style.cssText="flex:1;";
+  var dateLbl=document.createElement("div"); dateLbl.className="field-label";
+  dateLbl.textContent=cat==="schedule"?"시작일":"날짜"; dateSection.appendChild(dateLbl);
   var dateInput=document.createElement("input"); dateInput.type="date"; dateInput.value=isEdit?ev.date:dateStr;
-  dateInput.style.width="100%"; dateField.appendChild(dateInput); dateSeasonRow.appendChild(dateField);
+  dateInput.style.width="100%"; dateSection.appendChild(dateInput); dateSeasonRow.appendChild(dateSection);
 
   var seasonField=document.createElement("div"); seasonField.style.cssText="flex:1;";
   var seasonLbl=document.createElement("div"); seasonLbl.className="field-label"; seasonLbl.textContent="시즌"; seasonField.appendChild(seasonLbl);
@@ -500,7 +613,26 @@ function renderPanelForm(dateStr,ev){
   });
   seasonField.appendChild(seasonSel); dateSeasonRow.appendChild(seasonField);
   panel.appendChild(dateSeasonRow);
-  if(cat==="meeting") seasonField.style.display="none";
+  if(cat==="meeting"||cat==="schedule") seasonField.style.display="none";
+  if(cat==="schedule") dateSeasonRow.style.display="none";
+
+  /* 시작일+종료일 한 줄 (일정 카테고리만) */
+  var dateRangeRow=document.createElement("div");
+  dateRangeRow.style.cssText="display:flex;gap:8px;margin-bottom:10px;";
+  dateRangeRow.style.display=cat==="schedule"?"flex":"none";
+
+  var dateStartWrap=document.createElement("div"); dateStartWrap.style.cssText="flex:1;";
+  var dateStartLbl=document.createElement("div"); dateStartLbl.className="field-label"; dateStartLbl.textContent="시작일"; dateStartWrap.appendChild(dateStartLbl);
+  var dateInput=document.createElement("input"); dateInput.type="date"; dateInput.value=isEdit?ev.date:dateStr;
+  dateInput.style.width="100%"; dateStartWrap.appendChild(dateInput); dateRangeRow.appendChild(dateStartWrap);
+
+  var dateEndWrap=document.createElement("div"); dateEndWrap.style.cssText="flex:1;";
+  var dateEndLbl=document.createElement("div"); dateEndLbl.className="field-label"; dateEndLbl.textContent="종료일"; dateEndWrap.appendChild(dateEndLbl);
+  var dateEndInput=document.createElement("input"); dateEndInput.type="date";
+  dateEndInput.value=isEdit&&ev.dateEnd?ev.dateEnd:(isEdit?ev.date:dateStr);
+  dateEndInput.style.width="100%"; dateEndWrap.appendChild(dateEndInput); dateRangeRow.appendChild(dateEndWrap);
+
+  panel.appendChild(dateRangeRow);
 
   /* 폼 영역 */
   var formArea=document.createElement("div"); panel.appendChild(formArea);
@@ -514,8 +646,7 @@ function renderPanelForm(dateStr,ev){
     inp.value=val||""; wrap.appendChild(inp); fields[key]=inp; formArea.appendChild(wrap);
   }
 
-  var optListEl,matListEl;
-
+  var optListEl;
   function renderOptRows(){
     optListEl.innerHTML="";
     var hdr=document.createElement("div"); hdr.className="row-header opt-row";
@@ -533,41 +664,21 @@ function renderPanelForm(dateStr,ev){
     });
   }
 
-  function renderMatRows(){
-    matListEl.innerHTML="";
-    var hdr=document.createElement("div"); hdr.className="row-header mat-row";
-    ["업체명","아이템명","컬러","요척","단가",""].forEach(function(t){ var d=document.createElement("div"); d.textContent=t; hdr.appendChild(d); });
-    matListEl.appendChild(hdr);
-    materials.forEach(function(v,idx){
-      var row=document.createElement("div"); row.className="mat-row";
-      [["co","업체명"],["item","아이템명"],["color","컬러"],["usage","요척"],["price","단가"]].forEach(function(kp){
-        var inp=document.createElement("input"); inp.type="text"; inp.placeholder=kp[1]; inp.value=v[kp[0]]||"";
-        inp.addEventListener("input",function(){ v[kp[0]]=inp.value; }); row.appendChild(inp);
-      });
-      var rm=document.createElement("button"); rm.className="icon-btn"; rm.textContent="✕"; rm.disabled=materials.length===1;
-      rm.addEventListener("click",function(){ if(materials.length===1) return; materials.splice(idx,1); renderMatRows(); });
-      row.appendChild(rm); matListEl.appendChild(row);
-    });
-  }
-
   function renderFormArea(){
     formArea.innerHTML=""; fields={};
+    /* 날짜 레이블 갱신 */
+    dateLbl.textContent=cat==="schedule"?"시작일":"날짜";
     if(cat==="sample"){
       mkField("업체명","company",isEdit?ev.company:"");
       mkField("상품명","item",isEdit?ev.item:"");
-      var sl=document.createElement("div"); sl.className="section-label"; sl.textContent="원부자재"; formArea.appendChild(sl);
-      matListEl=document.createElement("div"); formArea.appendChild(matListEl); renderMatRows();
-      var amb=document.createElement("button"); amb.className="add-row-btn"; amb.textContent="+ 원부자재 추가";
-      amb.addEventListener("click",function(){ materials.push({co:"",item:"",color:"",usage:"",price:""}); renderMatRows(); });
-      formArea.appendChild(amb);
     } else if(cat==="main"){
       mkField("업체명","company",isEdit?ev.company:"");
       mkField("상품명","item",isEdit?ev.item:"");
       var sl2=document.createElement("div"); sl2.className="section-label"; sl2.textContent="옵션 (컬러/사이즈/수량)"; formArea.appendChild(sl2);
       optListEl=document.createElement("div"); formArea.appendChild(optListEl); renderOptRows();
-      var aob=document.createElement("button"); aob.className="add-row-btn"; aob.textContent="+ 옵션 추가";
-      aob.addEventListener("click",function(){ options.push({color:"",size:"",qty:""}); renderOptRows(); });
-      formArea.appendChild(aob);
+      var aob2=document.createElement("button"); aob2.className="add-row-btn"; aob2.textContent="+ 옵션 추가";
+      aob2.addEventListener("click",function(){ options.push({color:"",size:"",qty:""}); renderOptRows(); });
+      formArea.appendChild(aob2);
     } else if(cat==="reorder"){
       mkField("업체명","company",isEdit?ev.company:"");
       mkField("상품명","item",isEdit?ev.item:"");
@@ -576,12 +687,15 @@ function renderPanelForm(dateStr,ev){
       mkField("차수","order",savedOrderNum);
       var sl3=document.createElement("div"); sl3.className="section-label"; sl3.textContent="옵션 (컬러/사이즈/수량)"; formArea.appendChild(sl3);
       optListEl=document.createElement("div"); formArea.appendChild(optListEl); renderOptRows();
-      var aob2=document.createElement("button"); aob2.className="add-row-btn"; aob2.textContent="+ 옵션 추가";
-      aob2.addEventListener("click",function(){ options.push({color:"",size:"",qty:""}); renderOptRows(); });
-      formArea.appendChild(aob2);
+      var aob3=document.createElement("button"); aob3.className="add-row-btn"; aob3.textContent="+ 옵션 추가";
+      aob3.addEventListener("click",function(){ options.push({color:"",size:"",qty:""}); renderOptRows(); });
+      formArea.appendChild(aob3);
     } else if(cat==="meeting"){
       mkField("업체명","company",isEdit?ev.company:"");
       mkField("시간","stage",isEdit?ev.stage:"");
+      mkField("내용","content",isEdit?ev.content:"",true);
+    } else if(cat==="schedule"){
+      mkField("일정명","company",isEdit?ev.company:"");
       mkField("내용","content",isEdit?ev.content:"",true);
     }
   }
@@ -608,19 +722,22 @@ function renderPanelForm(dateStr,ev){
   saveBtn.addEventListener("click",function(){
     saveBtn.disabled=true; saveBtn.textContent="저장 중...";
     var finalBrand=(brand==="직접입력")?(brandCustomInput?brandCustomInput.value:""):brand;
-    var seasonVal=(cat!=="meeting")?seasonSel.value:"";
+    var seasonVal=(cat!=="meeting"&&cat!=="schedule")?seasonSel.value:"";
     var orderVal="";
     if(cat==="reorder"){ var raw=fields.order?fields.order.value:""; orderVal=raw?raw+" / "+seasonVal:seasonVal; }
-    else if(cat==="meeting"){ orderVal=""; }
+    else if(cat==="meeting"||cat==="schedule"){ orderVal=""; }
     else { orderVal=seasonVal; }
     var payload={
-      id:isEdit?ev.id:undefined, date:dateInput.value, category:cat, brand:finalBrand,
-      stage: (cat==="meeting")?(fields.stage?fields.stage.value:""):"",
+      id:isEdit?ev.id:undefined,
+      date:dateInput.value,
+      dateEnd:cat==="schedule"?dateEndInput.value:"",
+      category:cat,
+      brand:cat==="schedule"?"":finalBrand,
+      stage:(cat==="meeting")?(fields.stage?fields.stage.value:""):"",
       order:orderVal,
       company:fields.company?fields.company.value:"",
       item:fields.item?fields.item.value:"",
       options:(cat==="main"||cat==="reorder")?stringifyOptions(options):"",
-      materials:cat==="sample"?stringifyMaterials(materials):"",
       content:fields.content?fields.content.value:""
     };
     apiPost({action:isEdit?"update":"create",data:payload}).then(function(res){
@@ -632,8 +749,6 @@ function renderPanelForm(dateStr,ev){
   });
   rightBtns.appendChild(saveBtn); btnRow.appendChild(rightBtns); panel.appendChild(btnRow);
 }
-
-function refreshAllAndPanel(dateStr){ loadEvents().then(function(){ render(); if(dateStr) renderPanelList(dateStr); }); }
 
 document.getElementById("prev-btn").addEventListener("click",function(){ view.month--; if(view.month<0){view.month=11;view.year--;} refreshAll(); });
 document.getElementById("next-btn").addEventListener("click",function(){ view.month++; if(view.month>11){view.month=0;view.year++;} refreshAll(); });
