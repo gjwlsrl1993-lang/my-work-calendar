@@ -412,7 +412,7 @@ function renderPanelList(dateStr){
     var item=document.createElement("div"); item.className="panel-list-item";
     item.style.borderLeftColor=c.color; item.style.borderLeftWidth="3px"; item.style.borderLeftStyle="solid";
 
-    var catEl=document.createElement("div"); catEl.className="panel-list-cat"; catEl.style.color=c.text;
+    var catEl=document.createElement("div"); catEl.className="panel-list-cat"; catEl.style.color=c.color;
     var catText=c.label;
     if(ev.category==="schedule"){
       catText += " · " + fmtShort(ev.date) + " ~ " + fmtShort(ev.dateEnd||ev.date);
