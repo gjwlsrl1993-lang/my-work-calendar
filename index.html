@@ -65,7 +65,7 @@
 
   /* 멀티데이 바 (일정 카테고리) */
   .multiday-layer { position: absolute; left: 0; right: 0; top: 38px; pointer-events: none; }
-  .multiday-bar { position: absolute; height: 20px; border-radius: 4px; font-size: 11px; font-weight: 500; display: flex; align-items: center; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; pointer-events: auto; z-index: 2; }
+  .multiday-bar { position: absolute; height: 20px; border-radius: 4px; font-size: 11px; font-weight: 600; display: flex; align-items: center; padding: 0 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; pointer-events: auto; z-index: 2; }
   .multiday-bar.continues-left { border-top-left-radius: 0; border-bottom-left-radius: 0; padding-left: 4px; }
   .multiday-bar.continues-right { border-top-right-radius: 0; border-bottom-right-radius: 0; padding-right: 4px; }
   /* 셀 내 일정 바를 위한 spacer */
@@ -129,7 +129,7 @@
             <div class="legend-item"><span class="dot" style="background:#F01E1E;"></span>메인</div>
             <div class="legend-item"><span class="dot" style="background:#A020D0;"></span>리오더</div>
             <div class="legend-item"><span class="dot" style="background:#0DBF50;"></span>미팅</div>
-            <div class="legend-item"><span class="dot" style="background:#F59500;"></span>일정</div>
+            <div class="legend-item"><span class="dot" style="background:#F5D000;"></span>일정</div>
           </div>
           <button id="prev-btn">&#9666;</button>
           <button id="today-btn">오늘</button>
@@ -157,7 +157,7 @@ var CATS = {
   main:    { label: "메인",  color: "#E03B3B", bg: "#E03B3B", text: "#ffffff" },
   reorder: { label: "리오더", color: "#9040C0", bg: "#9040C0", text: "#ffffff" },
   meeting: { label: "미팅",  color: "#2EAF5C", bg: "#2EAF5C", text: "#ffffff" },
-  schedule:{ label: "일정",  color: "#E89820", bg: "#E89820", text: "#ffffff" }
+  schedule:{ label: "일정",  color: "#F5D000", bg: "#F5D000", text: "#5A4500" }
 };
 var BRANDS = ["엔오디", "헤오진", "직접입력"];
 
