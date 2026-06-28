@@ -518,6 +518,11 @@ function buildCell(dateStr, dayNum, isOutside, clickCb) {
               return e.category===ev.category && e.stage==="completed" && e.item===ev.item && e.company===ev.company;
             });
             if(hasDoneO) card.style.opacity = "0.5";
+          } else if(ev.stage==="partial"){
+            var hasDoneP = events.some(function(e){
+              return e.category===ev.category && e.stage==="completed" && e.company===ev.company;
+            });
+            if(hasDoneP) card.style.opacity = "0.5";
           }
         }
         if(ev.category==="meeting"){
@@ -533,6 +538,11 @@ function buildCell(dateStr, dayNum, isOutside, clickCb) {
           }
           if(ev.stage==="expected") parts.push("예정");
           else if(ev.stage==="completed") parts.push("완료");
+          else if(ev.stage==="partial"){
+            var pD=new Date(ev.date+"T00:00:00");
+            card.textContent="파샬입고 · "+(pD.getMonth()+1)+"월"+pD.getDate()+"일";
+            cell.appendChild(card); return;
+          }
           if(ev.company) parts.push(ev.company);
           if(ev.item) parts.push(ev.item);
           card.textContent = parts.join(" · ");
@@ -591,6 +601,11 @@ function buildCell(dateStr, dayNum, isOutside, clickCb) {
           return e.category===ev.category && e.stage==="completed" && e.item===ev.item && e.company===ev.company;
         });
         if(hasDone) card.style.opacity = "0.5";
+      } else if(ev.stage==="partial"){
+        var hasDoneP2 = events.some(function(e){
+          return e.category===ev.category && e.stage==="completed" && e.company===ev.company;
+        });
+        if(hasDoneP2) card.style.opacity = "0.5";
       }
     }
     if(ev.category==="meeting"){
@@ -699,7 +714,7 @@ function renderPanelList(dateStr){
       var toDelete=[ev.id];
       if(!ev.stage&&(ev.category==="pattern"||ev.category==="sample"||ev.category==="main"||ev.category==="reorder")){
         events.forEach(function(e){
-          if(e.category===ev.category&&(e.stage==="expected"||e.stage==="completed")&&e.item===ev.item&&e.company===ev.company){
+          if(e.category===ev.category&&(e.stage==="expected"||e.stage==="completed"||e.stage==="partial")&&e.company===ev.company){
             toDelete.push(e.id);
           }
         });
@@ -724,6 +739,10 @@ function renderPanelList(dateStr){
       catText = evDateShort + " · " + c.label;
       if(ev.stage==="expected") catText+=" · 예정";
       else if(ev.stage==="completed") catText+=" · 완료";
+      else if(ev.stage==="partial"){
+        var pDt=new Date(ev.date+"T00:00:00");
+        catText+=" · 파샬입고 · "+(pDt.getMonth()+1)+"월"+pDt.getDate()+"일";
+      }
       if(ev.order){
         if(ev.category==="reorder"&&ev.order.indexOf(" / ")>-1){
           var parts=ev.order.split(" / ");
@@ -746,17 +765,62 @@ function renderPanelList(dateStr){
       mainEl.textContent=(ev.company||"")+(ev.content?" — "+ev.content.slice(0,30):"");
     } else {
       mainEl.textContent=(ev.item||"")+(ev.company?" ("+ev.company+")":"");
+      /* 파샬출고 요약 */
+      if(!ev.stage && ev.content){
+        try {
+          var cp = JSON.parse(ev.content);
+          if(cp && cp.partial && cp.partial.length > 0){
+            var pSub = document.createElement("div");
+            pSub.style.cssText="font-size:10px;color:#3B5BBD;margin-top:2px;";
+            pSub.textContent="📤 "+cp.partial.filter(function(p){return p.color||p.qty;}).map(function(p){return (p.color||"-")+" "+p.qty+"장";}).join(", ");
+            mainEl.appendChild(pSub);
+          }
+        } catch(e2){}
+      }
     }
     item.appendChild(mainEl);
 
-    if((ev.category==="main"||ev.category==="reorder"||ev.category==="sample"||ev.category==="pattern")&&ev.options){
-      var opts=parseOptions(ev.options).filter(function(v){return v.color||v.size||v.qty;});
+    if((ev.category==="main"||ev.category==="reorder"||ev.category==="sample"||ev.category==="pattern")&&(ev.options||ev.stage==="partial")){
+      /* 항상 원본 이벤트 options 사용 (파샬 이벤트도 원본 수량 표시) */
+      var displayOpts = ev.options;
+      var originEv = events.find(function(e){
+        return e.category===ev.category && !e.stage && e.company===ev.company;
+      });
+      if(ev.stage==="partial"){
+        if(originEv) displayOpts = originEv.options;
+      }
+      var opts=displayOpts?parseOptions(displayOpts).filter(function(v){return v.color||v.size||v.qty;}):[];
       if(opts.length>0){
+        /* 파샬 수량 차감 계산 */
+        var partialDeduct = {};
+        if(ev.stage==="partial"){
+          try {
+            var pc = ev.content ? JSON.parse(ev.content) : null;
+            if(pc && pc.partial) pc.partial.forEach(function(p){
+              var k = (p.color||"")+"__"+(p.size||"");
+              partialDeduct[k] = (partialDeduct[k]||0) + (parseInt(p.qty)||0);
+            });
+          } catch(e2){}
+        }
+        /* 원본 이벤트면 연결된 파샬 이벤트에서 차감 */
+        if(!ev.stage){
+          events.filter(function(e){ return e.stage==="partial"&&e.category===ev.category&&e.company===ev.company; }).forEach(function(pe){
+            try {
+              var pc2 = pe.content ? JSON.parse(pe.content) : null;
+              if(pc2 && pc2.partial) pc2.partial.forEach(function(p){
+                var k = (p.color||"")+"__"+(p.size||"");
+                partialDeduct[k] = (partialDeduct[k]||0) + (parseInt(p.qty)||0);
+              });
+            } catch(e3){}
+          });
+        }
+        var hasDeduct = Object.keys(partialDeduct).length > 0;
         var groups=groupOptionsByColor(opts);
         var tbl=document.createElement("table"); tbl.className="opt-table"; tbl.style.marginTop="6px";
         var thead=document.createElement("thead");
         var hr=document.createElement("tr");
-        ["컬러","사이즈","수량"].forEach(function(h){ var th=document.createElement("th"); th.textContent=h; hr.appendChild(th); });
+        var headers = hasDeduct ? ["컬러","사이즈","수량","잔여"] : ["컬러","사이즈","수량"];
+        headers.forEach(function(h){ var th=document.createElement("th"); th.textContent=h; hr.appendChild(th); });
         thead.appendChild(hr); tbl.appendChild(thead);
         var tbody=document.createElement("tbody");
         groups.forEach(function(g){
@@ -768,6 +832,15 @@ function renderPanelList(dateStr){
             }
             var tdS=document.createElement("td"); tdS.textContent=s.size; tr.appendChild(tdS);
             var tdQ=document.createElement("td"); tdQ.textContent=s.qty; tr.appendChild(tdQ);
+            if(hasDeduct){
+              var k=(g.color||"")+"__"+(s.size||"");
+              var deduct=partialDeduct[k]||0;
+              var remain=(parseInt(s.qty)||0)-deduct;
+              var tdR=document.createElement("td");
+              tdR.textContent=remain;
+              tdR.style.cssText="font-weight:600;color:"+(remain<0?"#E03B3B":"#27AE60")+";";
+              tr.appendChild(tdR);
+            }
             tbody.appendChild(tr);
           });
         });
@@ -783,22 +856,26 @@ function renderPanelList(dateStr){
       var linkedExp=events.find(function(e){ return e.category===ev.category&&e.stage==="expected"&&e.item===ev.item&&e.company===ev.company; });
       var linkedDone=events.find(function(e){ return e.category===ev.category&&e.stage==="completed"&&e.item===ev.item&&e.company===ev.company; });
       var sec=document.createElement("div");
-      sec.style.cssText="background:#f4f6f9;border:1px solid #dce1ea;border-radius:8px;padding:10px 12px;margin-top:-4px;margin-bottom:8px;";
+      sec.style.cssText="background:#f4f6f9;border:1px solid #dce1ea;border-radius:6px;padding:6px 10px;margin-top:-4px;margin-bottom:6px;";
       if(linkedDone){
-        var dl=document.createElement("div"); dl.style.cssText="font-size:11px;color:#27AE60;font-weight:600;";
+        var dl=document.createElement("div"); dl.style.cssText="font-size:10px;color:#27AE60;font-weight:600;";
         dl.textContent="✅ 입고 완료 · "+fmtKorean(linkedDone.date); sec.appendChild(dl);
       } else if(linkedExp){
-        var el2=document.createElement("div"); el2.style.cssText="font-size:11px;color:#6b6a64;font-weight:500;";
-        el2.textContent="📦 입고 예정 · "+fmtKorean(linkedExp.date); sec.appendChild(el2);
+        var el2=document.createElement("div"); el2.style.cssText="font-size:10px;color:#6b6a64;font-weight:500;margin-bottom:2px;";
+        var expD=new Date(linkedExp.date+"T00:00:00");
+        var expWd=["일","월","화","수","목","금","토"][expD.getDay()];
+        el2.textContent="📦 입고예정 · "+(expD.getMonth()+1)+"월"+expD.getDate()+"일 ("+expWd+")"; sec.appendChild(el2);
+        var el2lock=document.createElement("div"); el2lock.style.cssText="font-size:9px;color:#9b9a93;";
+        el2lock.textContent="🔒 예정일 생성 후 수정 불가"; sec.appendChild(el2lock);
       } else {
-        var el3=document.createElement("div"); el3.style.cssText="font-size:11px;color:#6b6a64;margin-bottom:6px;font-weight:500;";
+        var el3=document.createElement("div"); el3.style.cssText="font-size:10px;color:#6b6a64;margin-bottom:4px;font-weight:500;";
         el3.textContent="📦 입고 예정일 설정"; sec.appendChild(el3);
         var er=document.createElement("div"); er.style.cssText="display:flex;gap:8px;align-items:center;";
         var ei=document.createElement("input"); ei.type="date";
-        ei.style.cssText="flex:1;padding:6px 8px;border:1px solid #dce1ea;border-radius:8px;font-size:12px;font-family:inherit;background:#fff;";
+        ei.style.cssText="flex:1;padding:3px 6px;border:1px solid #dce1ea;border-radius:6px;font-size:11px;font-family:inherit;background:#fff;";
         er.appendChild(ei);
         var eb=document.createElement("button"); eb.textContent="입고 예정 생성";
-        eb.style.cssText="font-size:12px;padding:6px 12px;white-space:nowrap;";
+        eb.style.cssText="font-size:11px;padding:3px 8px;white-space:nowrap;";
         (function(capturedEv,capturedEi){
           eb.addEventListener("click",function(e){
             e.stopPropagation();
@@ -814,17 +891,298 @@ function renderPanelList(dateStr){
       panel.appendChild(sec);
     }
 
+    /* 파샬 입고일 설정 섹션 — 원본 이벤트에만 표시 (입고예정/완료 관계없이) */
+    if((ev.category==="pattern"||ev.category==="sample"||ev.category==="main"||ev.category==="reorder") && isOrigin){
+      /* 기존 파샬 데이터 파싱 */
+      var partialList = [];
+      var partialDate = "";
+      try {
+        var parsedP = ev.content ? JSON.parse(ev.content) : null;
+        if(parsedP && parsedP.partial) partialList = parsedP.partial;
+        if(parsedP && parsedP.partialDate) partialDate = parsedP.partialDate;
+      } catch(e2){}
+
+      /* 파샬 목록이 비어있으면 원본 옵션에서 자동 생성 */
+      if(partialList.length === 0 && ev.options){
+        var originOpts = parseOptions(ev.options).filter(function(v){return v.color||v.size||v.qty;});
+        originOpts.forEach(function(o){
+          partialList.push({color:o.color||"", size:o.size||"", qty:o.qty||""});
+        });
+      }
+
+      var partialSec = document.createElement("div");
+      partialSec.style.cssText="background:#f0f4ff;border:1px solid #b0b8c8;border-radius:6px;padding:6px 10px;margin-top:-4px;margin-bottom:6px;";
+
+      /* 이미 저장된 파샬이 있으면 요약만 표시 */
+      var savedPartials = events.filter(function(e){
+        return e.stage==="partial" && e.category===ev.category && e.company===ev.company;
+      });
+      if(savedPartials.length > 0){
+        var pTitleDone = document.createElement("div");
+        pTitleDone.style.cssText="font-size:10px;color:#3B5BBD;font-weight:600;margin-bottom:4px;";
+        pTitleDone.textContent="📦 파샬 입고일";
+        partialSec.appendChild(pTitleDone);
+        savedPartials.forEach(function(pe){
+          var pd=new Date(pe.date+"T00:00:00");
+          var pdStr="파샬입고 · "+(pd.getMonth()+1)+"월"+pd.getDate()+"일";
+          try {
+            var pc5=pe.content?JSON.parse(pe.content):null;
+            if(pc5&&pc5.partial&&pc5.partial.length>0){
+              pdStr+=" · "+pc5.partial.filter(function(p){return p.color||p.qty;}).map(function(p){return [(p.color||""),(p.size||""),(p.qty||"")].filter(Boolean).join(" ");}).join(", ");
+            }
+          } catch(e6){}
+          var pRow=document.createElement("div"); pRow.style.cssText="font-size:10px;color:#3B5BBD;margin-bottom:2px;";
+          pRow.textContent="● "+pdStr;
+          partialSec.appendChild(pRow);
+        });
+        panel.appendChild(partialSec);
+      } else {
+
+      /* 타이틀 */
+      var partialLbl = document.createElement("div");
+      partialLbl.style.cssText="font-size:10px;color:#3B5BBD;font-weight:600;margin-bottom:6px;";
+      partialLbl.textContent="📦 파샬 입고일 설정";
+      partialSec.appendChild(partialLbl);
+
+      /* 컬러/사이즈/수량 행 목록 */
+      var partialListEl = document.createElement("div");
+
+      /* 헤더 */
+      var phdr = document.createElement("div");
+      phdr.style.cssText="display:grid;grid-template-columns:1fr 1fr 1fr 20px;gap:4px;margin-bottom:3px;";
+      ["컬러","사이즈","수량",""].forEach(function(h){
+        var d=document.createElement("div"); d.style.cssText="font-size:10px;color:#6b6a64;"; d.textContent=h; phdr.appendChild(d);
+      });
+      partialSec.appendChild(phdr);
+
+      function renderPartialRows(){
+        partialListEl.innerHTML="";
+        partialList.forEach(function(p, pi){
+          var row = document.createElement("div");
+          row.style.cssText="display:grid;grid-template-columns:1fr 1fr 1fr 20px;gap:4px;align-items:center;margin-bottom:4px;";
+
+          var colorInp = document.createElement("input"); colorInp.type="text"; colorInp.placeholder="컬러";
+          colorInp.value = p.color||"";
+          colorInp.style.cssText="padding:3px 6px;border:1px solid #b0b8c8;border-radius:5px;font-size:11px;font-family:inherit;background:#fff;width:100%;";
+          colorInp.addEventListener("input",function(){ p.color=colorInp.value; });
+
+          var sizeInp = document.createElement("input"); sizeInp.type="text"; sizeInp.placeholder="사이즈";
+          sizeInp.value = p.size||"";
+          sizeInp.style.cssText="padding:3px 6px;border:1px solid #b0b8c8;border-radius:5px;font-size:11px;font-family:inherit;background:#fff;width:100%;";
+          sizeInp.addEventListener("input",function(){ p.size=sizeInp.value; });
+
+          var qtyInp = document.createElement("input"); qtyInp.type="text"; qtyInp.placeholder="수량";
+          qtyInp.value = p.qty||"";
+          qtyInp.style.cssText="padding:3px 6px;border:1px solid #b0b8c8;border-radius:5px;font-size:11px;font-family:inherit;background:#fff;width:100%;";
+          qtyInp.addEventListener("input",function(){ p.qty=qtyInp.value; });
+
+          var rmBtn = document.createElement("button");
+          rmBtn.textContent="✕";
+          rmBtn.style.cssText="width:20px;height:20px;padding:0;font-size:10px;border:1px solid #b0b8c8;border-radius:4px;background:#fff;cursor:pointer;color:#6b6a64;";
+          (function(idx){ rmBtn.addEventListener("click",function(e2){
+            e2.stopPropagation(); partialList.splice(idx,1); renderPartialRows();
+          }); })(pi);
+
+          row.appendChild(colorInp); row.appendChild(sizeInp); row.appendChild(qtyInp); row.appendChild(rmBtn);
+          partialListEl.appendChild(row);
+        });
+      }
+      renderPartialRows();
+      partialSec.appendChild(partialListEl);
+
+      /* 날짜 + 저장 한 줄 1:1 */
+      var pDateRow = document.createElement("div");
+      pDateRow.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:5px;align-items:center;margin-top:6px;";
+
+      var pDateInp = document.createElement("input"); pDateInp.type="date";
+      pDateInp.value = partialDate||"";
+      pDateInp.style.cssText="padding:3px 6px;border:1px solid #b0b8c8;border-radius:5px;font-size:11px;font-family:inherit;background:#fff;width:100%;";
+      pDateInp.addEventListener("change",function(){ partialDate=pDateInp.value; });
+      pDateRow.appendChild(pDateInp);
+
+      /* 저장 버튼 */
+      var savePartialBtn = document.createElement("button");
+      savePartialBtn.textContent="저장";
+      savePartialBtn.style.cssText="font-size:11px;padding:3px 0;border:1px solid #3B5BBD;border-radius:5px;background:#3B5BBD;color:#fff;cursor:pointer;width:100%;";
+      pDateRow.appendChild(savePartialBtn);
+
+      partialSec.appendChild(pDateRow);
+      (function(capturedEv){
+        savePartialBtn.addEventListener("click",function(e2){
+          e2.stopPropagation();
+          if(!pDateInp.value){ showToast("입고일을 선택해주세요."); return; }
+          var filtered = partialList.filter(function(p){ return p.color||p.size||p.qty; });
+          /* 기존 텍스트 content 유지 */
+          var existingText = "";
+          try {
+            var ep = capturedEv.content ? JSON.parse(capturedEv.content) : null;
+            if(!ep || !ep.partial) existingText = capturedEv.content||"";
+          } catch(e3){ existingText = capturedEv.content||""; }
+          var newContent = JSON.stringify({text: existingText, partial: filtered, partialDate: pDateInp.value});
+          var upd = Object.assign({}, capturedEv, {content: newContent});
+          localUpdate(upd);
+
+          /* 잔여 수량 계산 (기존 옵션 - 파샬 수량) */
+          var remainOpts = [];
+          if(capturedEv.options){
+            var origOpts = parseOptions(capturedEv.options).filter(function(v){return v.color||v.size||v.qty;});
+            var deductMap = {};
+            filtered.forEach(function(p){ var k=(p.color||"")+"__"+(p.size||""); deductMap[k]=(deductMap[k]||0)+(parseInt(p.qty)||0); });
+            origOpts.forEach(function(o){
+              var k=(o.color||"")+"__"+(o.size||"");
+              var remain=(parseInt(o.qty)||0)-(deductMap[k]||0);
+              remainOpts.push({color:o.color||"",size:o.size||"",qty:String(remain)});
+            });
+          }
+
+          /* 캘린더에 파샬 입고 이벤트 생성 */
+          var label = filtered.length>0 ? filtered.map(function(p){return [(p.color||""),(p.size||""),(p.qty||"")].filter(Boolean).join(" ");}).join(", ") : "파샬입고";
+          var pEv = {
+            date: pDateInp.value, dateEnd:"", category: capturedEv.category,
+            brand: capturedEv.brand||"", stage:"partial",
+            order: capturedEv.order||"", company: capturedEv.company||"",
+            item: (capturedEv.item||"")+" [파샬] "+label,
+            options: remainOpts.length>0 ? stringifyOptions(remainOpts) : "",
+            content: JSON.stringify({partial:filtered})
+          };
+          localCreate(pEv,"__partial__");
+          showToast("파샬 입고일이 저장되었습니다.");
+          render(); renderPanelList(dateStr);
+          apiPost({action:"update", data:upd});
+          apiPost({action:"create", data:pEv}).then(function(res){
+            if(res&&res.id){ for(var i=events.length-1;i>=0;i--){ if(events[i].id==="__partial__"){ events[i].id=res.id; break; } } }
+          });
+        });
+      })(ev);
+
+      panel.appendChild(partialSec);
+      } /* end else (no saved partials) */
+    }
+
+    /* 파샬 이벤트에서 추가 파샬 입고일 설정 — 입고완료 시 표시 안 함 */
+    var hasCompletedForPartial = events.some(function(e){ return e.category===ev.category&&e.stage==="completed"&&e.company===ev.company; });
+    if((ev.category==="pattern"||ev.category==="sample"||ev.category==="main"||ev.category==="reorder") && ev.stage==="partial" && !hasCompletedForPartial){
+      var addPartialSec = document.createElement("div");
+      addPartialSec.style.cssText="background:#f0f4ff;border:1px solid #b0b8c8;border-radius:6px;padding:6px 10px;margin-top:-4px;margin-bottom:6px;";
+      var addPartialLbl = document.createElement("div");
+      addPartialLbl.style.cssText="font-size:10px;color:#3B5BBD;font-weight:600;margin-bottom:6px;";
+      addPartialLbl.textContent="📦 추가 파샬 입고일 설정";
+      addPartialSec.appendChild(addPartialLbl);
+
+      /* 원본 옵션에서 행 자동 생성 — 수량은 잔여 수량으로 */
+      var originEvForAdd = events.find(function(e){ return e.category===ev.category&&!e.stage&&e.company===ev.company; });
+      var addPartialList = [];
+      if(originEvForAdd && originEvForAdd.options){
+        var origOptsForAdd = parseOptions(originEvForAdd.options).filter(function(v){return v.color||v.size||v.qty;});
+        /* 기존 파샬 수량 합산 */
+        var deductMapForAdd = {};
+        events.filter(function(e){ return e.stage==="partial"&&e.category===ev.category&&e.company===ev.company; }).forEach(function(pe){
+          try {
+            var pc3 = pe.content ? JSON.parse(pe.content) : null;
+            if(pc3 && pc3.partial) pc3.partial.forEach(function(p){
+              var k=(p.color||"")+"__"+(p.size||"");
+              deductMapForAdd[k]=(deductMapForAdd[k]||0)+(parseInt(p.qty)||0);
+            });
+          } catch(e4){}
+        });
+        origOptsForAdd.forEach(function(o){
+          var k=(o.color||"")+"__"+(o.size||"");
+          var remain=(parseInt(o.qty)||0)-(deductMapForAdd[k]||0);
+          addPartialList.push({color:o.color||"",size:o.size||"",qty:String(Math.max(remain,0))});
+        });
+      } else {
+        addPartialList.push({color:"",size:"",qty:""});
+      }
+
+      /* 헤더 */
+      var apHdr = document.createElement("div");
+      apHdr.style.cssText="display:grid;grid-template-columns:1fr 1fr 1fr 20px;gap:4px;margin-bottom:3px;";
+      ["컬러","사이즈","수량",""].forEach(function(h){ var d=document.createElement("div"); d.style.cssText="font-size:10px;color:#6b6a64;"; d.textContent=h; apHdr.appendChild(d); });
+      addPartialSec.appendChild(apHdr);
+
+      var apListEl = document.createElement("div");
+      function renderAddPartialRows(){
+        apListEl.innerHTML="";
+        addPartialList.forEach(function(p,pi){
+          var row=document.createElement("div"); row.style.cssText="display:grid;grid-template-columns:1fr 1fr 1fr 20px;gap:4px;align-items:center;margin-bottom:4px;";
+          var cInp=document.createElement("input"); cInp.type="text"; cInp.placeholder="컬러"; cInp.value=p.color||"";
+          cInp.style.cssText="padding:3px 6px;border:1px solid #b0b8c8;border-radius:5px;font-size:11px;font-family:inherit;background:#fff;width:100%;";
+          cInp.addEventListener("input",function(){ p.color=cInp.value; });
+          var sInp=document.createElement("input"); sInp.type="text"; sInp.placeholder="사이즈"; sInp.value=p.size||"";
+          sInp.style.cssText="padding:3px 6px;border:1px solid #b0b8c8;border-radius:5px;font-size:11px;font-family:inherit;background:#fff;width:100%;";
+          sInp.addEventListener("input",function(){ p.size=sInp.value; });
+          var qInp=document.createElement("input"); qInp.type="text"; qInp.placeholder="수량"; qInp.value=p.qty||"";
+          qInp.style.cssText="padding:3px 6px;border:1px solid #b0b8c8;border-radius:5px;font-size:11px;font-family:inherit;background:#fff;width:100%;";
+          qInp.addEventListener("input",function(){ p.qty=qInp.value; });
+          var rmBtn=document.createElement("button"); rmBtn.textContent="✕";
+          rmBtn.style.cssText="width:20px;height:20px;padding:0;font-size:10px;border:1px solid #b0b8c8;border-radius:4px;background:#fff;cursor:pointer;color:#6b6a64;";
+          (function(idx){ rmBtn.addEventListener("click",function(e2){ e2.stopPropagation(); addPartialList.splice(idx,1); renderAddPartialRows(); }); })(pi);
+          row.appendChild(cInp); row.appendChild(sInp); row.appendChild(qInp); row.appendChild(rmBtn);
+          apListEl.appendChild(row);
+        });
+      }
+      renderAddPartialRows();
+      addPartialSec.appendChild(apListEl);
+
+      /* 날짜 + 저장 한 줄 */
+      var apDateRow = document.createElement("div");
+      apDateRow.style.cssText="display:grid;grid-template-columns:1fr 1fr;gap:5px;align-items:center;margin-top:6px;";
+      var apDateInp = document.createElement("input"); apDateInp.type="date";
+      apDateInp.style.cssText="padding:3px 6px;border:1px solid #b0b8c8;border-radius:5px;font-size:11px;font-family:inherit;background:#fff;width:100%;";
+      apDateRow.appendChild(apDateInp);
+      var apSaveBtn = document.createElement("button"); apSaveBtn.textContent="저장";
+      apSaveBtn.style.cssText="font-size:11px;padding:3px 0;border:1px solid #3B5BBD;border-radius:5px;background:#3B5BBD;color:#fff;cursor:pointer;width:100%;";
+      (function(capturedEv){
+        apSaveBtn.addEventListener("click",function(e2){
+          e2.stopPropagation();
+          if(!apDateInp.value){ showToast("입고일을 선택해주세요."); return; }
+          var filtered2 = addPartialList.filter(function(p){ return p.color||p.size||p.qty; });
+          var label2 = filtered2.length>0 ? filtered2.map(function(p){ return [(p.color||""),(p.size||""),(p.qty||"")].filter(Boolean).join(" "); }).join(", ") : "파샬입고";
+          /* 원본에서 잔여 수량 계산 */
+          var originEv2 = events.find(function(e){ return e.category===capturedEv.category&&!e.stage&&e.company===capturedEv.company; });
+          var remainOpts2 = [];
+          if(originEv2 && originEv2.options){
+            var origOpts2 = parseOptions(originEv2.options).filter(function(v){return v.color||v.size||v.qty;});
+            var deductMap2 = {};
+            filtered2.forEach(function(p){ var k=(p.color||"")+"__"+(p.size||""); deductMap2[k]=(deductMap2[k]||0)+(parseInt(p.qty)||0); });
+            origOpts2.forEach(function(o){
+              var k=(o.color||"")+"__"+(o.size||"");
+              var remain2=(parseInt(o.qty)||0)-(deductMap2[k]||0);
+              remainOpts2.push({color:o.color||"",size:o.size||"",qty:String(remain2)});
+            });
+          }
+          var pEv2 = {
+            date:apDateInp.value, dateEnd:"", category:capturedEv.category,
+            brand:capturedEv.brand||"", stage:"partial",
+            order:capturedEv.order||"", company:capturedEv.company||"",
+            item:(capturedEv.item.replace(/ \[파샬\].*$/,"")||"")+" [파샬] "+label2,
+            options: remainOpts2.length>0 ? stringifyOptions(remainOpts2) : "",
+            content:JSON.stringify({partial:filtered2})
+          };
+          localCreate(pEv2,"__partial2__");
+          showToast("추가 파샬 입고일이 저장되었습니다.");
+          render(); renderPanelList(dateStr);
+          apiPost({action:"create",data:pEv2}).then(function(res){
+            if(res&&res.id){ for(var i=events.length-1;i>=0;i--){ if(events[i].id==="__partial2__"){ events[i].id=res.id; break; } } }
+          });
+        });
+      })(ev);
+      apDateRow.appendChild(apSaveBtn);
+      addPartialSec.appendChild(apDateRow);
+      panel.appendChild(addPartialSec);
+    }
+
     if((ev.category==="pattern"||ev.category==="sample"||ev.category==="main"||ev.category==="reorder") && ev.stage==="expected"){
       var delaySec=document.createElement("div");
-      delaySec.style.cssText="background:#fff8ec;border:1px solid #f0d9a0;border-radius:8px;padding:10px 12px;margin-top:-4px;margin-bottom:6px;";
-      var delayLbl=document.createElement("div"); delayLbl.style.cssText="font-size:11px;color:#9a6800;margin-bottom:6px;font-weight:500;";
+      delaySec.style.cssText="background:#fff8ec;border:1px solid #f0d9a0;border-radius:6px;padding:6px 10px;margin-top:-4px;margin-bottom:4px;";
+      var delayLbl=document.createElement("div"); delayLbl.style.cssText="font-size:10px;color:#9a6800;margin-bottom:4px;font-weight:500;";
       delayLbl.textContent="⏰ 입고 지연"; delaySec.appendChild(delayLbl);
       var delayRow=document.createElement("div"); delayRow.style.cssText="display:flex;gap:8px;align-items:center;";
       var delayIn=document.createElement("input"); delayIn.type="date";
-      delayIn.style.cssText="flex:1;padding:6px 8px;border:1px solid #f0d9a0;border-radius:8px;font-size:12px;font-family:inherit;background:#fff;";
+      delayIn.style.cssText="flex:1;padding:3px 6px;border:1px solid #f0d9a0;border-radius:6px;font-size:11px;font-family:inherit;background:#fff;";
       delayRow.appendChild(delayIn);
       var delayBtn=document.createElement("button"); delayBtn.textContent="예정일 변경";
-      delayBtn.style.cssText="font-size:12px;padding:6px 12px;white-space:nowrap;background:#f5a623;color:#fff;border-color:#f5a623;";
+      delayBtn.style.cssText="font-size:11px;padding:3px 8px;white-space:nowrap;background:#f5a623;color:#fff;border-color:#f5a623;";
       (function(capturedEv,capturedIn){
         delayBtn.addEventListener("click",function(e){
           e.stopPropagation();
@@ -837,15 +1195,15 @@ function renderPanelList(dateStr){
       delayRow.appendChild(delayBtn); delaySec.appendChild(delayRow); panel.appendChild(delaySec);
 
       var doneSec=document.createElement("div");
-      doneSec.style.cssText="background:#f4f6f9;border:1px solid #dce1ea;border-radius:8px;padding:10px 12px;margin-bottom:8px;";
-      var doneLbl=document.createElement("div"); doneLbl.style.cssText="font-size:11px;color:#6b6a64;margin-bottom:6px;font-weight:500;";
+      doneSec.style.cssText="background:#f4f6f9;border:1px solid #dce1ea;border-radius:6px;padding:6px 10px;margin-bottom:6px;";
+      var doneLbl=document.createElement("div"); doneLbl.style.cssText="font-size:10px;color:#6b6a64;margin-bottom:4px;font-weight:500;";
       doneLbl.textContent="✅ 입고 완료 처리"; doneSec.appendChild(doneLbl);
       var doneRow=document.createElement("div"); doneRow.style.cssText="display:flex;gap:8px;align-items:center;";
       var doneIn=document.createElement("input"); doneIn.type="date"; doneIn.value=ev.date;
-      doneIn.style.cssText="flex:1;padding:6px 8px;border:1px solid #dce1ea;border-radius:8px;font-size:12px;font-family:inherit;background:#fff;";
+      doneIn.style.cssText="flex:1;padding:3px 6px;border:1px solid #dce1ea;border-radius:6px;font-size:11px;font-family:inherit;background:#fff;";
       doneRow.appendChild(doneIn);
       var doneBtn=document.createElement("button"); doneBtn.textContent="완료";
-      doneBtn.style.cssText="font-size:12px;padding:6px 12px;white-space:nowrap;background:#1a1a18;color:#fff;border-color:#1a1a18;";
+      doneBtn.style.cssText="font-size:11px;padding:3px 8px;white-space:nowrap;background:#1a1a18;color:#fff;border-color:#1a1a18;";
       (function(capturedEv,capturedIn){
         doneBtn.addEventListener("click",function(e){
           e.stopPropagation();
