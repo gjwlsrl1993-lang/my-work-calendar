@@ -961,7 +961,7 @@ function renderPanelForm(dateStr,ev){
     var wrap=document.createElement("div"); wrap.className="field";
     var lab=document.createElement("div"); lab.className="field-label"; lab.textContent=label; wrap.appendChild(lab);
     var inp=document.createElement(isTextarea?"textarea":"input");
-    if(!isTextarea) inp.type="text"; if(isTextarea) inp.rows=3;
+    if(!isTextarea) inp.type="text"; if(isTextarea) inp.rows=2;
     inp.value=val||""; wrap.appendChild(inp); fields[key]=inp; formArea.appendChild(wrap);
   }
 
@@ -1037,9 +1037,11 @@ function renderPanelForm(dateStr,ev){
     if(cat==="pattern"||cat==="sample"){
       mkField("업체명","company",isEdit?ev.company:"");
       mkField("상품명","item",isEdit?ev.item:"");
+      mkField("내용","content",isEdit?ev.content:"",true);
     } else if(cat==="main"){
       mkField("업체명","company",isEdit?ev.company:"");
       mkField("상품명","item",isEdit?ev.item:"");
+      mkField("내용","content",isEdit?ev.content:"",true);
       var sl2=document.createElement("div"); sl2.className="section-label"; sl2.textContent="옵션"; formArea.appendChild(sl2);
       optListEl=document.createElement("div"); formArea.appendChild(optListEl); renderOptRows();
       var aob2=document.createElement("button"); aob2.className="add-row-btn"; aob2.textContent="+ 컬러 추가";
@@ -1056,6 +1058,7 @@ function renderPanelForm(dateStr,ev){
       var savedOrderNum="";
       if(isEdit&&ev.order){ savedOrderNum=ev.order.indexOf(" / ")>-1?ev.order.split(" / ")[0].trim():ev.order; }
       mkField("차수","order",savedOrderNum);
+      mkField("내용","content",isEdit?ev.content:"",true);
       var sl3=document.createElement("div"); sl3.className="section-label"; sl3.textContent="옵션"; formArea.appendChild(sl3);
       optListEl=document.createElement("div"); formArea.appendChild(optListEl); renderOptRows();
       var aob3=document.createElement("button"); aob3.className="add-row-btn"; aob3.textContent="+ 컬러 추가";
