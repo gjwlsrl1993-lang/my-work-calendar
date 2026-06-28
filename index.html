@@ -510,11 +510,15 @@ function buildCell(dateStr, dayNum, isOutside, clickCb) {
         var card = document.createElement("div"); card.className = "event-card";
         card.style.background = c.bg; card.style.color = c.text;
         var catsO = ["pattern","sample","main","reorder"];
-        if(catsO.indexOf(ev.category)>-1 && !ev.stage){
-          var hasDoneO = events.some(function(e){
-            return e.category===ev.category && e.stage==="completed" && e.item===ev.item && e.company===ev.company;
-          });
-          if(hasDoneO) card.style.opacity = "0.5";
+        if(catsO.indexOf(ev.category)>-1){
+          if(ev.stage==="completed"){
+            card.style.opacity = "0.5";
+          } else if(!ev.stage){
+            var hasDoneO = events.some(function(e){
+              return e.category===ev.category && e.stage==="completed" && e.item===ev.item && e.company===ev.company;
+            });
+            if(hasDoneO) card.style.opacity = "0.5";
+          }
         }
         if(ev.category==="meeting"){
           var strong=document.createElement("strong"); strong.textContent=ev.company||"";
@@ -577,13 +581,17 @@ function buildCell(dateStr, dayNum, isOutside, clickCb) {
     var c = CATS[ev.category]||CATS.meeting;
     var card = document.createElement("div"); card.className = "event-card";
     card.style.background = c.bg; card.style.color = c.text;
-    /* 원본 이벤트이고 입고완료가 연결되어 있으면 70% 불투명도 */
+    /* 입고완료 연결된 원본 or 완료 자체 → 50% 불투명도 */
     var cats = ["pattern","sample","main","reorder"];
-    if(cats.indexOf(ev.category)>-1 && !ev.stage){
-      var hasDone = events.some(function(e){
-        return e.category===ev.category && e.stage==="completed" && e.item===ev.item && e.company===ev.company;
-      });
-      if(hasDone) card.style.opacity = "0.5";
+    if(cats.indexOf(ev.category)>-1){
+      if(ev.stage==="completed"){
+        card.style.opacity = "0.5";
+      } else if(!ev.stage){
+        var hasDone = events.some(function(e){
+          return e.category===ev.category && e.stage==="completed" && e.item===ev.item && e.company===ev.company;
+        });
+        if(hasDone) card.style.opacity = "0.5";
+      }
     }
     if(ev.category==="meeting"){
       var strong=document.createElement("strong"); strong.textContent=ev.company||"";
